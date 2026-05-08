@@ -43,13 +43,58 @@ Services-led. Setup is the high-margin product; software is retention.
 
 ## Stack (Phase 1)
 
-- Next.js on Vercel
+- Next.js 15 (App Router) on Vercel
 - Supabase (Postgres + auth + storage)
-- Claude API (one model)
-- Whisper / AssemblyAI for transcription
+- Claude API — Opus 4.7 with adaptive thinking and prompt caching
+- Whisper / AssemblyAI for transcription (optional; paste-only works without it)
 - Stripe for billing
 
-No Redis, no queues, no microservices. Generation runs synchronously via streaming.
+No Redis, no queues, no microservices. Generation runs synchronously.
+
+---
+
+## Running it
+
+```bash
+cp .env.example .env.local   # fill in ANTHROPIC_API_KEY + Supabase keys
+npm install
+npm run dev                  # http://localhost:3000
+```
+
+Apply the schema once against your Supabase project (migration in `supabase/migrations/0001_init.sql`).
+
+### Project layout
+
+```
+src/
+  app/
+    page.tsx              landing
+    onboarding/           12-question intake + 30-piece corpus upload
+    voice/                rendered Voice Profile (read-only viewer)
+    generate/             paste source → 20-asset bundle with QA scorecards
+    dashboard/            counts, approval rate, recent generations
+    api/
+      voice/build/        POST  → builds Voice Profile JSON from corpus
+      generate/           POST  → 20-asset bundle, each asset QA-scored
+      qa/                 POST  → re-score one asset
+      upload/             POST  → save source content
+      export/             GET   → CSV / JSON export of a generation
+  lib/
+    anthropic.ts          Opus 4.7 client (singleton)
+    types.ts              VoiceProfile + QAScorecard zod schemas
+    prompts/
+      voiceBuild.ts       single Claude call: corpus → structured JSON
+      generate.ts         single Claude call: source + cached profile → bundle
+      qa.ts               per-asset scorecard (parallelized)
+    db.ts                 Supabase queries
+    supabase/             server + browser clients
+    auth.ts               requireUser() helper
+supabase/migrations/      schema + RLS policies
+```
+
+### Why Opus 4.7
+
+The Bible commits to one model. Opus 4.7 with `thinking: {type: "adaptive"}` is the right default — voice extraction and QA both benefit from extended reasoning. The Voice Profile is sent on every generation (and every QA call) for a creator, so it sits behind a `cache_control: {type: "ephemeral"}` breakpoint in the system block. That's a ~90% cost reduction on the cached prefix after the first call in a 5-minute window.
 
 ## Roadmap
 
