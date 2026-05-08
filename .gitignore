@@ -14,3 +14,4 @@ dist/
 .turbo
 
 next-env.d.ts
+tsconfig.tsbuildinfo

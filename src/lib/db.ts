@@ -86,6 +86,34 @@ export async function saveGeneration(args: {
   return data;
 }
 
+export async function updateSubscriptionByCustomer(
+  stripeCustomerId: string,
+  fields: {
+    stripe_subscription_id?: string;
+    tier?: string;
+    status?: string;
+    current_period_end?: string;
+  },
+) {
+  const sb = supabaseService();
+  const { error } = await sb
+    .from("subscriptions")
+    .update({ ...fields, updated_at: new Date().toISOString() })
+    .eq("stripe_customer_id", stripeCustomerId);
+  if (error) throw error;
+}
+
+export async function getSubscription(creatorId: string) {
+  const sb = supabaseService();
+  const { data, error } = await sb
+    .from("subscriptions")
+    .select("*")
+    .eq("creator_id", creatorId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
 export async function listGenerations(creatorId: string) {
   const sb = supabaseService();
   const { data, error } = await sb
