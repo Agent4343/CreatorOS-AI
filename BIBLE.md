@@ -62,6 +62,27 @@ What is **not** a moat: the video model, the voice provider, the LLM, this codeb
 
 Posting is **manual**: download MP4, upload via the platform's UI. Auto-post is deferred until we know the videos are worth posting.
 
+### Monetization thresholds — why length is the single biggest revenue lever
+
+Both platforms gate ad placement on video length. These are not soft preferences; they are hard rules in the platforms' Partner Program docs:
+
+| Length | YouTube | Facebook |
+|---|---|---|
+| < 1 min | No ads (Shorts only — different program) | No in-stream ads |
+| 1–2 min | One pre-roll only | No in-stream ads |
+| 3–7 min | One pre-roll only | In-stream ads enabled |
+| **≥ 8 min** | **Mid-roll ads unlocked** (multiple breaks) | In-stream ads enabled |
+| 10–15 min | Sweet spot — most ad revenue per video while retention holds | Same |
+
+Mid-roll ads are where YouTube ad revenue actually lives. A 7-minute video gets one ad slot; an 8-minute video gets three or four. The cliff at 8 min is the single biggest revenue lever in long-form YouTube.
+
+Eligibility (separate from per-video length rules):
+
+- **YouTube Partner Program**: 1,000 subscribers + 4,000 watch hours over 12 months
+- **Facebook In-Stream Ads**: 5,000 page followers + 60,000 minutes viewed over 60 days
+
+**Implication for the app**: default `target_duration_sec` is 600 (10 min), which sits in the YouTube mid-roll sweet spot. The character-form slider visually marks the zones — red < 3 min (unmonetizable), amber 3–7 (single pre-roll only), green ≥ 8 (mid-roll unlocked) — so the creator never accidentally targets a length that can't earn.
+
 ---
 
 ## 5. Positioning

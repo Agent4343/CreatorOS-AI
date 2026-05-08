@@ -123,7 +123,11 @@ export default function NewCharacterPage() {
         </div>
         <div>
           <label className="block text-sm font-medium">
-            Target length: {durationMin} min
+            Target length:{" "}
+            <span className="font-mono">{durationMin} min</span>
+            <span className="ml-2 text-xs font-normal text-muted">
+              {monetizationLabel(durationMin)}
+            </span>
           </label>
           <input
             type="range"
@@ -133,10 +137,26 @@ export default function NewCharacterPage() {
             onChange={(e) => setDurationMin(Number(e.target.value))}
             className="mt-2 w-full"
           />
+          {/* Monetization zones: visual bar matched to slider range. */}
+          <div className="mt-1 flex h-1.5 w-full overflow-hidden rounded-full">
+            {/* 1-2 min: unmonetizable on YouTube long-form + Facebook in-stream */}
+            <div className="bg-accent/40" style={{ width: `${(2 / 19) * 100}%` }} title="Not monetizable" />
+            {/* 3-7 min: Facebook in-stream OK + YouTube single pre-roll */}
+            <div className="bg-amber-300" style={{ width: `${(5 / 19) * 100}%` }} title="Facebook OK; YouTube single pre-roll only" />
+            {/* 8-20 min: YouTube mid-roll unlocked */}
+            <div className="bg-emerald-500" style={{ width: `${(12 / 19) * 100}%` }} title="YouTube mid-roll ads unlocked" />
+          </div>
           <div className="mt-1 flex justify-between font-mono text-[10px] text-muted">
             <span>1 min</span>
+            <span className="text-amber-700">3</span>
+            <span className="font-bold text-emerald-700">8</span>
             <span>20 min</span>
           </div>
+          <p className="mt-1 text-[11px] text-muted">
+            <span className="text-accent">Red:</span> no ads.{" "}
+            <span className="text-amber-700">Amber:</span> Facebook in-stream + YouTube single pre-roll.{" "}
+            <span className="text-emerald-700">Green:</span> YouTube mid-roll unlocked. 10–12 min is the sweet spot.
+          </p>
         </div>
       </div>
 
@@ -243,4 +263,11 @@ function Field({
 
 function csv(s: string): string[] {
   return s.split(",").map((x) => x.trim()).filter(Boolean);
+}
+
+function monetizationLabel(minutes: number): string {
+  if (minutes < 3) return "· no ads on either platform";
+  if (minutes < 8) return "· Facebook in-stream OK; YouTube pre-roll only";
+  if (minutes <= 12) return "· YouTube mid-roll sweet spot";
+  return "· YouTube mid-roll OK; watch for retention drop";
 }
