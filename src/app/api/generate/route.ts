@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClip, getCharacter } from "@/lib/db";
-import { startClipPipeline } from "@/lib/orchestrator";
+import { runScriptPhase } from "@/lib/orchestrator";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
+/**
+ * Phase 1 only: kick off script generation + 6-agent review. Returns
+ * once the clip is in 'awaiting_approval' (or 'failed'). The user
+ * reviews the scorecard, then either approves (POST /api/clips/[id]/approve
+ * to start the render phase) or regenerates (POST /api/clips/[id]/regen).
+ */
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as {
@@ -36,8 +42,8 @@ export async function POST(req: NextRequest) {
       topic,
     });
 
-    // Run script + voice + provider-kickoff inline. ~30 seconds.
-    await startClipPipeline({ clipId: clip.id });
+    // Script + review (~30-60 sec wall clock with 6 parallel reviewers).
+    await runScriptPhase({ clipId: clip.id });
 
     return NextResponse.json({ clip_id: clip.id });
   } catch (e) {

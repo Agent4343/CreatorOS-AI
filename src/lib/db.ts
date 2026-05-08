@@ -1,3 +1,4 @@
+import type { ReviewScorecard } from "./agents";
 import { supabaseService } from "./supabase/server";
 import { Character, ClipStatus, Persona, Script } from "./types";
 
@@ -82,6 +83,7 @@ export async function updateClip(
     audio_url?: string | null;
     video_url?: string | null;
     provider_job_id?: string | null;
+    review_scorecard?: ReviewScorecard | null;
     error?: string | null;
     completed_at?: string | null;
   },
@@ -101,6 +103,7 @@ type ClipRow = {
   audio_url: string | null;
   video_url: string | null;
   provider_job_id: string | null;
+  review_scorecard: ReviewScorecard | null;
   error: string | null;
   created_at: string;
   completed_at: string | null;

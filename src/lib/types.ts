@@ -36,6 +36,8 @@ export type Character = z.infer<typeof CharacterSchema>;
 export const CLIP_STATUSES = [
   "queued",
   "scripting",
+  "reviewing",
+  "awaiting_approval",
   "voicing",
   "rendering",
   "done",

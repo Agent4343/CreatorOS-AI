@@ -166,6 +166,31 @@ Note `reference_image_url` uses a `heygen://<avatar_id>` URL scheme. The user cr
 
 ---
 
+## 7b. Review pipeline — the six agents
+
+Every script passes through six parallel Claude-backed review agents before voice or video render. The pipeline exists for two reasons: protect monetization (don't burn $5 of HeyGen render on a script YouTube will demonetize), and stop "AI-shaped" comedy from leaking through (the structural-but-not-funny output that LLMs default to).
+
+| Agent | What it catches | Failure mode |
+|---|---|---|
+| **Monetization compliance** | YouTube advertiser-unfriendly content — profanity intensity, sensitive-topic categories, harmful claims, copyrighted material | **Hard gate.** Any `critical` issue blocks the render; the user is forced to regenerate. |
+| **Hook strength** | First 30 sec earn the rest. Hollow openers like "Hey guys" or "Today we're going to talk about." | Soft gate. Surfaces issue + suggestion. User decides. |
+| **Persona fit** | Drift from the character — generic-AI register, banned phrases, tone shift mid-script | Soft gate. |
+| **Comedy lands** | Specific punches, escalation, callbacks — vs. comedy-shaped filler ("absolutely wild and frankly insane", hollow tricolons, "and then I realized…") | Soft gate. |
+| **Length & pacing** | Hits target duration at ~150 wpm; segments balanced; no runtime holes | Soft gate. Critical if predicted runtime drops below the 8-min YouTube mid-roll cliff (§4). |
+| **Fact-check surface** | Identifies claims to verify (specific numbers, named events with dates, quotes, health/finance). Doesn't auto-fact-check — surfaces them. | Soft gate. |
+
+All six run **in parallel** against the generated script. The Claude calls share a `cache_control` prefix (persona + script) so the second through sixth reviewers cost ~10% of the first. Total: ~10 sec wall-clock, ~$0.60.
+
+**Gate logic:**
+
+- Any `monetization` issue with `severity: "critical"` → `monetization_blocked: true`. The pipeline auto-regenerates **once** with feedback synthesized from the failed agents. If still blocked, surfaces to the user — no render until they fix it.
+- All scores ≥ 7 and no monetization block → `overall_pass: true`. UI shows the green-light state. One click to continue.
+- Anything in between → `overall_pass: false` but not blocked. UI shows the scorecard with issues; user reads, optionally types creator feedback, hits *Regenerate* or *Approve anyway*.
+
+**Why human-in-the-loop, not full auto:**
+
+Per §1: creator does taste, system does production. The agents are an *assist*, not a substitute for the editor. Full-auto regeneration on every soft fail would cause the writer to thrash on subjective notes — the user is the final taste arbiter, especially on comedy where what an LLM thinks is "funnier" often isn't.
+
 ## 8. Generation pipeline
 
 ```
@@ -174,6 +199,17 @@ Topic
   ▼
 Claude (script, ~30 sec, ~$0.10)
   │ produces hook + 3-6 segments + outro, ~1500 words for 10 min
+  ▼
+6 review agents in parallel (~10 sec, ~$0.60)
+  │ monetization · hook · persona · comedy · pacing · facts
+  ▼
+[gate]
+  │   monetization_blocked → auto-regen once → re-review
+  │   overall_pass         → ready for human approval
+  │   soft fails           → surface scorecard; user reads
+  ▼
+[user clicks Approve & render]
+  │
   ▼
 ElevenLabs (voice, ~30 sec, ~$0.30)
   │ MP3 of the full script
@@ -196,7 +232,7 @@ clip.status = 'done', video_url populated
 Library — download, upload to YouTube
 ```
 
-**Total**: 5–15 minutes wall-clock, ~$3–8 of API spend per 10-min video (HeyGen dominates).
+**Total**: ~1 min for script + review, then 5–15 min for the video render. ~$4–9 of API spend per 10-min video (HeyGen dominates; review pipeline adds ~$0.60).
 
 ---
 

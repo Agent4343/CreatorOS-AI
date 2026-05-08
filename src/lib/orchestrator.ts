@@ -1,18 +1,33 @@
+import { reviewScript, feedbackFromScorecard, ReviewScorecard } from "./agents";
 import { generateScript, scriptToVoiceText } from "./prompts/script";
 import { synthesizeSpeech } from "./providers/elevenlabs";
 import { videoProvider } from "./providers/video";
 import { getCharacter, getClip, updateClip } from "./db";
 import { supabaseService } from "./supabase/server";
-import { CharacterSchema } from "./types";
+import { CharacterSchema, Script, ScriptSchema } from "./types";
 
 const STORAGE_BUCKET = "clip-assets";
+const MAX_AUTO_REGEN_ATTEMPTS = 1;
 
 /**
- * Sync portion of the pipeline:
- *   script → voice → upload audio to Storage → kick off video render.
- * The video render itself is async and finishes via /api/jobs/poll.
+ * Phase 1: script → 6-agent review → wait for approval.
+ *
+ * If the first script fails the monetization hard gate, we auto-
+ * regenerate ONCE with the failed-agent feedback baked in. If that
+ * still fails, we surface to the user (status='awaiting_approval')
+ * with the scorecard — they can read why and choose to regenerate
+ * by hand or edit the topic and start over.
+ *
+ * If everything passes on the first or second try, we still pause
+ * for human approval. This is intentional: BIBLE §1 says creator
+ * does taste, system does production. The agents are an assist,
+ * not a substitute for the editor.
  */
-export async function startClipPipeline(args: { clipId: string }): Promise<void> {
+export async function runScriptPhase(args: {
+  clipId: string;
+  humanFeedback?: string;
+  previousScript?: Script;
+}): Promise<void> {
   const clip = await getClip(args.clipId);
   if (!clip) throw new Error("Clip not found");
 
@@ -21,16 +36,70 @@ export async function startClipPipeline(args: { clipId: string }): Promise<void>
   const c = CharacterSchema.parse(character);
 
   try {
-    // 1. Script
-    await updateClip(clip.id, { status: "scripting" });
-    const script = await generateScript({
-      persona: c.persona,
-      topic: clip.topic,
-      targetDurationSec: c.target_duration_sec,
-    });
-    await updateClip(clip.id, { script });
+    let script: Script | null = args.previousScript ?? null;
+    let scorecard: ReviewScorecard | null = null;
+    let attempt = 0;
 
-    // 2. Voice
+    while (attempt <= MAX_AUTO_REGEN_ATTEMPTS) {
+      await updateClip(clip.id, { status: "scripting" });
+      const agentFeedback =
+        attempt > 0 && scorecard ? feedbackFromScorecard(scorecard) : "";
+      const human = (args.humanFeedback ?? "").trim();
+      const combinedFeedback = [agentFeedback, human]
+        .filter((s) => s.length > 0)
+        .join("\n\n");
+
+      script = await generateScript({
+        persona: c.persona,
+        topic: clip.topic,
+        targetDurationSec: c.target_duration_sec,
+        previousScript:
+          attempt === 0 ? args.previousScript : script ?? undefined,
+        feedback: combinedFeedback || undefined,
+      });
+      await updateClip(clip.id, { script });
+
+      await updateClip(clip.id, { status: "reviewing" });
+      scorecard = await reviewScript({
+        persona: c.persona,
+        topic: clip.topic,
+        targetDurationSec: c.target_duration_sec,
+        script,
+      });
+      await updateClip(clip.id, { review_scorecard: scorecard });
+
+      // Auto-regen only when the hard monetization gate is hit. Soft
+      // checks surface to the user — taste calls are theirs.
+      if (!scorecard.monetization_blocked) break;
+      attempt++;
+    }
+
+    await updateClip(clip.id, { status: "awaiting_approval" });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Unknown error";
+    await updateClip(clip.id, { status: "failed", error: message });
+    throw e;
+  }
+}
+
+/**
+ * Phase 2: user has approved the script → voice → video render.
+ * Called when the user clicks "Approve & continue" in the UI.
+ */
+export async function runRenderPhase(args: { clipId: string }): Promise<void> {
+  const clip = await getClip(args.clipId);
+  if (!clip) throw new Error("Clip not found");
+  if (!clip.script) throw new Error("Clip has no script");
+  if (clip.status !== "awaiting_approval") {
+    throw new Error(`Cannot render: status is ${clip.status}`);
+  }
+
+  const character = await getCharacter(clip.character_id);
+  if (!character) throw new Error("Character not found");
+  const c = CharacterSchema.parse(character);
+  const script = ScriptSchema.parse(clip.script);
+
+  try {
     await updateClip(clip.id, { status: "voicing" });
     const voiceText = scriptToVoiceText(script);
     const audioBytes = await synthesizeSpeech({
@@ -40,8 +109,6 @@ export async function startClipPipeline(args: { clipId: string }): Promise<void>
       similarityBoost: c.voice_similarity_boost,
     });
 
-    // 3. Persist audio to Supabase Storage and get a public URL.
-    //    HeyGen needs to fetch this URL directly.
     const audioUrl = await putBytes({
       path: `clips/${clip.id}/voice.mp3`,
       bytes: Buffer.from(audioBytes),
@@ -49,7 +116,6 @@ export async function startClipPipeline(args: { clipId: string }): Promise<void>
     });
     await updateClip(clip.id, { audio_url: audioUrl });
 
-    // 4. Kick off the video render via whichever provider is configured.
     await updateClip(clip.id, { status: "rendering" });
     const provider = videoProvider();
     const job = await provider.startRender({
@@ -67,8 +133,9 @@ export async function startClipPipeline(args: { clipId: string }): Promise<void>
 }
 
 /**
- * Check the video provider for the latest status of one in-flight clip.
- * Called by /api/jobs/poll on a schedule.
+ * Phase 3 (cron-driven): poll the video provider until the render is
+ * finished, then mirror the MP4 into Supabase Storage so the URL is
+ * stable.
  */
 export async function pollClip(clip: {
   id: string;
@@ -79,8 +146,6 @@ export async function pollClip(clip: {
   const job = await provider.getJob(clip.provider_job_id);
 
   if (job.status === "complete" && job.video_url) {
-    // Mirror the provider's video into our own storage so the URL is
-    // stable and not subject to provider-side expiry / rotation.
     const res = await fetch(job.video_url);
     if (!res.ok) {
       await updateClip(clip.id, {
@@ -109,7 +174,6 @@ export async function pollClip(clip: {
       error: job.error ?? "Video render failed",
     });
   }
-  // Otherwise still rendering; nothing to do.
 }
 
 async function putBytes(args: {

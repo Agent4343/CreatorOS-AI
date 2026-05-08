@@ -26,8 +26,12 @@ create table if not exists clips (
   character_id        uuid not null references characters(id) on delete cascade,
   topic               text not null,
   status              text not null default 'queued'
-                      check (status in ('queued','scripting','voicing','rendering','done','failed')),
+                      check (status in (
+                        'queued','scripting','reviewing','awaiting_approval',
+                        'voicing','rendering','done','failed'
+                      )),
   script              jsonb,
+  review_scorecard    jsonb,
   audio_url           text,
   video_url           text,
   provider_job_id     text,
