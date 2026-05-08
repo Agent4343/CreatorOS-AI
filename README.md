@@ -43,17 +43,17 @@ Services-led. Setup is the high-margin product; software is retention.
 
 ## Stack (Phase 1)
 
-- Next.js 15 (App Router) on Vercel
+- Next.js (App Router) on Railway — long-running Node process, not serverless
 - Supabase (Postgres + auth + storage)
 - Claude API — Opus 4.7 with adaptive thinking and prompt caching
-- Whisper / AssemblyAI for transcription (optional; paste-only works without it)
+- Whisper for transcription (optional; paste-only works without it)
 - Stripe for billing
 
 No Redis, no queues, no microservices. Generation runs synchronously.
 
 ---
 
-## Running it
+## Running it locally
 
 ```bash
 cp .env.example .env.local   # fill in ANTHROPIC_API_KEY + Supabase keys
@@ -61,7 +61,47 @@ npm install
 npm run dev                  # http://localhost:3000
 ```
 
-Apply the schema once against your Supabase project (migration in `supabase/migrations/0001_init.sql`).
+Apply both Supabase migrations (`supabase/migrations/0001_init.sql` and `0002_subscriptions.sql`) once against your project.
+
+### Smoke test
+
+```bash
+npm run smoke   # exercises voice-build → generate → QA against fixture data
+```
+
+Costs ~$1–2 in Anthropic tokens per run. Validates the prompt chain end-to-end without Supabase or the API routes.
+
+---
+
+## Deploying to Railway
+
+1. Connect the repo. Railway auto-detects Next.js — no `Procfile` or `railway.json` needed. Build = `npm run build`, start = `npm run start`.
+2. **Healthcheck path**: set `Settings → Healthcheck Path` to `/api/health`. The route returns 503 if any required env var is missing, so a misconfigured deploy fails fast instead of silently 500-ing on first user request.
+3. **Apply Supabase migrations** to your Supabase project via the Supabase SQL editor:
+   - `supabase/migrations/0001_init.sql` (creators, voice_profiles, source_content, generations, workflows + RLS)
+   - `supabase/migrations/0002_subscriptions.sql` (Stripe subscription state + RLS)
+4. **Required env vars** in Railway:
+
+   ```
+   ANTHROPIC_API_KEY
+   NEXT_PUBLIC_SUPABASE_URL
+   NEXT_PUBLIC_SUPABASE_ANON_KEY
+   SUPABASE_SERVICE_ROLE_KEY
+   ```
+
+   Optional but recommended:
+
+   ```
+   WHISPER_API_KEY                    # /api/transcribe falls back to "key not set" if absent
+   STRIPE_SECRET_KEY                  # required for /billing checkout
+   STRIPE_WEBHOOK_SECRET              # required for Stripe webhook signature verification
+   STRIPE_PRICE_SOLO                  # solo  · $99/mo
+   STRIPE_PRICE_PRO                   #  pro  · $199/mo
+   STRIPE_PRICE_TEAM                  # team  · $399/mo
+   ```
+
+5. **Stripe webhook URL**: once Railway gives you a public domain (e.g. `creatoros.up.railway.app`), point Stripe → Webhooks at `https://<your-domain>/api/stripe/webhook` and listen for `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`. Copy the signing secret into `STRIPE_WEBHOOK_SECRET`.
+6. **Note on `maxDuration` exports**: Several API routes export `maxDuration` (e.g. 300s for `/api/voice/build` and `/api/generate`). That's a Vercel-specific hint; on Railway it's a no-op. Railway runs Next.js as a long-running Node process with no per-request timeout, so the long Anthropic calls just run to completion.
 
 ### Project layout
 
@@ -69,26 +109,45 @@ Apply the schema once against your Supabase project (migration in `supabase/migr
 src/
   app/
     page.tsx              landing
+    audit/                public voice audit (no signup) — lead magnet
+    login/                Supabase auth (magic link / password / signup)
     onboarding/           12-question intake + 30-piece corpus upload
+                          + RSS / URL list import
     voice/                rendered Voice Profile (read-only viewer)
-    generate/             paste source → 20-asset bundle with QA scorecards
+    generate/             source → 20 scored assets + per-asset regenerate
+                          + audio/video transcribe panel
     dashboard/            counts, approval rate, recent generations
+    billing/              Stripe checkout for the three retainer tiers
+    auth/callback/        Supabase OAuth code exchange
+    auth/signout/         signs out + redirects
     api/
-      voice/build/        POST  → builds Voice Profile JSON from corpus
-      generate/           POST  → 20-asset bundle, each asset QA-scored
-      qa/                 POST  → re-score one asset
-      upload/             POST  → save source content
-      export/             GET   → CSV / JSON export of a generation
+      voice/build/        POST  builds Voice Profile JSON from corpus
+      generate/           POST  20-asset bundle, each asset QA-scored
+      regenerate/         POST  one asset, steered by previous + feedback
+      qa/                 POST  re-score one asset
+      upload/             POST  save source content
+      export/             GET   CSV / JSON export of a generation
+      transcribe/         POST  multipart audio/video → Whisper transcript
+      scrape/             POST  RSS / URL list / single page → pieces
+      audit/              POST  public — score 3-10 posts (no auth)
+      stripe/checkout/    POST  authed — start Stripe Checkout Session
+      stripe/webhook/     POST  Stripe webhook (signature-verified)
+      health/             GET   Railway healthcheck
   lib/
     anthropic.ts          Opus 4.7 client (singleton)
     types.ts              VoiceProfile + QAScorecard zod schemas
+    stripe.ts             Stripe client + tier price-id resolver
+    scrape.ts             RSS/Atom + HTML page extraction
     prompts/
-      voiceBuild.ts       single Claude call: corpus → structured JSON
-      generate.ts         single Claude call: source + cached profile → bundle
-      qa.ts               per-asset scorecard (parallelized)
+      voiceBuild.ts       corpus → structured JSON
+      generate.ts         source + cached profile → bundle / one asset
+      qa.ts               per-asset scorecard
+      audit.ts            public five-dimension audit
     db.ts                 Supabase queries
     supabase/             server + browser clients
     auth.ts               requireUser() helper
+  middleware.ts           gates protected pages + API routes
+scripts/smoke.ts          end-to-end prompt smoke test
 supabase/migrations/      schema + RLS policies
 ```
 
