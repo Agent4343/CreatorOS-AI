@@ -44,7 +44,7 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <Stat label="Voice Profile" value={voice ? "ready" : "missing"} />
+        <Stat label="Style Profile" value={voice ? "ready" : "missing"} />
         <Stat label="Generations" value={String(gens?.length ?? 0)} />
         <Stat
           label="Approval rate"

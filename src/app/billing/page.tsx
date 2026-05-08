@@ -52,7 +52,7 @@ export default async function BillingPage() {
         </p>
         <ul className="mt-3 list-disc space-y-1 pl-5">
           <li>
-            <strong>Starter</strong> — $1,500 · voice profile + 1 workflow live
+            <strong>Starter</strong> — $1,500 · style profile + 1 workflow live
             + training
           </li>
           <li>

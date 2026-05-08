@@ -81,7 +81,7 @@ export default function OnboardingPage() {
         const err = await res.json();
         throw new Error(err.error ?? "Failed");
       }
-      router.push("/voice");
+      router.push("/style");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     } finally {
@@ -92,7 +92,11 @@ export default function OnboardingPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Build your voice profile</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Build your style profile</h1>
+        <p className="mt-1 text-xs text-ink/60">
+          "Style" = how you write — sentence patterns, hooks, signature
+          phrases. Not your spoken voice. We don't touch audio.
+        </p>
         <p className="mt-2 max-w-2xl text-ink/70">
           One thing only: get us 30+ pieces of your writing. Paste an RSS feed,
           paste a list of URLs, or drop in essays directly. Everything else is
@@ -204,9 +208,9 @@ export default function OnboardingPage() {
           className="rounded-md bg-ink px-5 py-3 font-sans text-sm font-medium text-cream disabled:opacity-50"
         >
           {loading
-            ? "Building voice profile (≈3 min)..."
+            ? "Building style profile (≈3 min)..."
             : ready
-              ? "Build voice profile"
+              ? "Build style profile"
               : `Add ${remaining} more piece${remaining === 1 ? "" : "s"}`}
         </button>
         <span className="text-xs text-ink/60">

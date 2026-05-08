@@ -77,8 +77,8 @@ Add more admins by comma-separating: `ADMIN_USER_IDS=uuid1,uuid2,uuid3`.
 2. Either paste an RSS feed URL (your blog, your Substack) or paste 30+ pieces of your own writing separated by lines containing only `---`.
 3. Wait until the progress bar shows **30/30 · ready**.
 4. Optionally open the "About you" section and fill in 4 quick questions. Skipping is fine — Claude infers from the corpus.
-5. Click **Build voice profile**. ~3 minutes. Costs ~$0.50 in Anthropic tokens.
-6. Lands on `/voice` showing your structured profile.
+5. Click **Build style profile**. ~3 minutes. Costs ~$0.50 in Anthropic tokens.
+6. Lands on `/style` showing your structured profile.
 7. Click **Generate**. Paste a podcast transcript or essay. Click **Generate bundle**. ~60–90 seconds. Costs ~$0.50–1 per generation.
 8. Review the 20 assets. Click **regenerate** on any flagged ones. Optionally type feedback.
 9. Click **Export CSV** or **Export JSON** to get the bundle out.
@@ -89,7 +89,7 @@ Add more admins by comma-separating: `ADMIN_USER_IDS=uuid1,uuid2,uuid3`.
 npm run smoke
 ```
 
-Runs `voice-build → generate → QA(first 3)` against a synthetic operator-creator fixture. ~$1–2 per run. Lets you validate the prompt chain produces parseable JSON without touching Supabase or the API routes.
+Runs `style-build → generate → QA(first 3)` against a synthetic operator-creator fixture. ~$1–2 per run. Lets you validate the prompt chain produces parseable JSON without touching Supabase or the API routes.
 
 ---
 

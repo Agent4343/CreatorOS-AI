@@ -43,7 +43,7 @@ export default async function RootLayout({
                 <>
                   <a href="/dashboard">Dashboard</a>
                   <a href="/generate">Generate</a>
-                  <a href="/voice">Voice</a>
+                  <a href="/style">Style</a>
                   <a href="/billing">Billing</a>
                   {admin && <a href="/admin" className="text-accent">Admin</a>}
                   <form action="/auth/signout" method="post">
@@ -57,7 +57,7 @@ export default async function RootLayout({
                 </>
               ) : (
                 <>
-                  <a href="/audit">Free voice audit</a>
+                  <a href="/audit">Free style audit</a>
                   <a href="/login">Sign in</a>
                 </>
               )}

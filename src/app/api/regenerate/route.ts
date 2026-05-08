@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
     }
     const voiceRow = await getLatestVoiceProfile(creator.id);
     if (!voiceRow) {
-      return NextResponse.json({ error: "No voice profile" }, { status: 400 });
+      return NextResponse.json({ error: "No style profile" }, { status: 400 });
     }
     const voiceProfile = VoiceProfileSchema.parse(voiceRow.profile);
 

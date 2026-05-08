@@ -8,7 +8,7 @@ const DIMENSIONS = [
   ["specificity", "Specificity"],
   ["hook_strength", "Hook strength"],
   ["format_fitness", "Format fitness"],
-  ["original_voice_signal", "Original voice"],
+  ["original_voice_signal", "Original style"],
 ] as const;
 
 export default function AuditPage() {
@@ -45,12 +45,12 @@ export default function AuditPage() {
     <div className="space-y-8">
       <div>
         <h1 className="text-4xl font-semibold tracking-tight">
-          Free voice audit
+          Free writing-style audit
         </h1>
         <p className="mt-2 max-w-2xl text-ink/80">
           Paste 3–10 of your recent posts. We'll score them against five
           dimensions — AI-tell density, specificity, hook strength, format
-          fitness, original voice signal — and send back the three
+          fitness, original style signal — and send back the three
           highest-leverage edits with concrete before/after examples.
         </p>
         <p className="mt-2 text-xs text-ink/60">
@@ -82,7 +82,7 @@ export default function AuditPage() {
             disabled={loading || posts.length < 3 || posts.length > 10}
             className="rounded-md bg-ink px-5 py-3 font-sans text-sm font-medium text-cream disabled:opacity-50"
           >
-            {loading ? "Auditing (≈1 min)..." : "Audit my voice"}
+            {loading ? "Auditing (≈1 min)..." : "Audit my writing"}
           </button>
           {error && (
             <div className="rounded-md border border-accent/40 bg-accent/5 p-3 text-sm text-accent">
@@ -227,13 +227,13 @@ function AuditView({
         <p className="mt-2 text-sm">
           CreatorOS AI runs this rubric against everything we generate from
           your source content — clips, threads, posts, newsletter sections —
-          tuned to a Voice Profile we build from your archive.
+          tuned to a Style Profile we build from your archive.
         </p>
         <a
           href="/onboarding"
           className="mt-3 inline-block rounded-md bg-cream px-4 py-2 font-sans text-sm font-medium text-ink no-underline"
         >
-          Build my voice profile →
+          Build my style profile →
         </a>
       </section>
     </div>

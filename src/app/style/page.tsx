@@ -5,7 +5,7 @@ import {
 import { requireUser } from "@/lib/auth";
 import { VoiceProfile } from "@/lib/types";
 
-export default async function VoicePage() {
+export default async function StylePage() {
   const user = await requireUser();
   const creator = await getCurrentCreator(user.id);
   if (!creator) {
@@ -20,8 +20,8 @@ export default async function VoicePage() {
   if (!row) {
     return (
       <Empty
-        body="No voice profile built yet."
-        cta={{ href: "/onboarding", label: "Build my voice profile" }}
+        body="No style profile built yet."
+        cta={{ href: "/onboarding", label: "Build my style profile" }}
       />
     );
   }
@@ -30,9 +30,10 @@ export default async function VoicePage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Voice Profile</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Style Profile</h1>
         <p className="mt-2 text-sm text-ink/60">
-          Last built {new Date(row.created_at).toLocaleString()}.{" "}
+          How you <em>write</em>, not how you sound. Built from your archive.
+          Last refresh {new Date(row.created_at).toLocaleString()}.{" "}
           <a href="/onboarding">Rebuild</a> to incorporate new source pieces.
         </p>
       </div>

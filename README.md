@@ -1,6 +1,6 @@
 # CreatorOS AI
 
-**A content workflow engine that turns one source into twenty platform-ready assets in your voice.**
+**A content workflow engine that turns one source into twenty platform-ready assets in your writing style.**
 
 Not an AI writer. Not a scheduler. Not a prompt library. CreatorOS AI replaces the editing-and-repurposing workflow that eats 15+ hours of an operator-creator's week.
 
@@ -8,7 +8,7 @@ Not an AI writer. Not a scheduler. Not a prompt library. CreatorOS AI replaces t
 
 ## What it does
 
-A creator drops in one long-form source (podcast, video, newsletter) and gets back ~20 platform-ready artifacts — clips, captions, threads, LinkedIn posts, newsletter teasers — in their voice, with a QA scorecard attached to every asset.
+A creator drops in one long-form source (podcast, video, newsletter) and gets back ~20 platform-ready artifacts — clips, captions, threads, LinkedIn posts, newsletter teasers — in their writing style, with a QA scorecard attached to every asset.
 
 The wedge: **produce 20 platform-ready assets from one source in under an hour, without rewriting.**
 
@@ -18,16 +18,16 @@ Operator-creators on LinkedIn and newsletters: consultants, founders, B2B though
 
 ## How it works
 
-1. **Onboarding (10 min)** — 12-question voice intake + 30+ source pieces uploaded.
-2. **Voice Profile build (3 min)** — one Claude call produces a structured JSON profile (vocabulary, sentence patterns, hooks, CTAs, tone vectors, format preferences, audience).
+1. **Onboarding (10 min)** — 4-question intake (optional) + 30+ source pieces uploaded.
+2. **Style Profile build (3 min)** — one Claude call produces a structured JSON profile (vocabulary, sentence patterns, hooks, CTAs, tone vectors, format preferences, audience).
 3. **Generate** — paste a transcript or topic, get a 20-asset bundle in 60–90 seconds with QA scores.
 4. **Review** — approve, regenerate flagged assets, or edit in place. Edits feed back into the profile.
 5. **Export** — copy buttons per platform.
 
 ## The two specs that matter
 
-- **Voice Profile** — structured JSON, built from ≥30 source pieces via a single Claude call with structured output. Not a fine-tune, not embeddings, not a vector DB. See [BIBLE.md §7](./BIBLE.md#7-voice-profile--concrete-spec).
-- **QA Rubric** — six dimensions (voice match, AI-tell density, specificity, hook strength, format fitness, CTA quality), each scored 0–10. Sub-7 scores get specific fix suggestions. See [BIBLE.md §8](./BIBLE.md#8-qa-rubric--concrete-spec).
+- **Style Profile** — structured JSON, built from ≥30 source pieces via a single Claude call with structured output. Not a fine-tune, not embeddings, not a vector DB. See [BIBLE.md §7](./BIBLE.md#7-voice-profile--concrete-spec).
+- **QA Rubric** — six dimensions (style match, AI-tell density, specificity, hook strength, format fitness, CTA quality), each scored 0–10. Sub-7 scores get specific fix suggestions. See [BIBLE.md §8](./BIBLE.md#8-qa-rubric--concrete-spec).
 
 ## Pricing
 
@@ -35,11 +35,11 @@ Services-led. Setup is the high-margin product; software is retention.
 
 | Tier             | Price            | What you get                                                |
 | ---------------- | ---------------- | ----------------------------------------------------------- |
-| Starter setup    | $1,500 once      | Voice profile + 1 workflow live + training                  |
+| Starter setup    | $1,500 once      | Style profile + 1 workflow live + training                  |
 | Studio setup     | $3,000 once      | 3 workflows + custom hook/CTA libraries + 30-day support    |
-| Solo retainer    | $99 / mo         | 1 voice profile, 4 generations/week                         |
-| Pro retainer     | $199 / mo        | 1 voice profile, unlimited, QA scorecard, priority support  |
-| Team retainer    | $399 / mo        | Up to 3 voice profiles                                      |
+| Solo retainer    | $99 / mo         | 1 style profile, 4 generations/week                         |
+| Pro retainer     | $199 / mo        | 1 style profile, unlimited, QA scorecard, priority support  |
+| Team retainer    | $399 / mo        | Up to 3 style profiles                                      |
 
 ## Stack (Phase 1)
 
@@ -66,7 +66,7 @@ Apply both Supabase migrations (`supabase/migrations/0001_init.sql` and `0002_su
 ### Smoke test
 
 ```bash
-npm run smoke   # exercises voice-build → generate → QA against fixture data
+npm run smoke   # exercises style-build → generate → QA against fixture data
 ```
 
 Costs ~$1–2 in Anthropic tokens per run. Validates the prompt chain end-to-end without Supabase or the API routes.
@@ -109,11 +109,11 @@ Costs ~$1–2 in Anthropic tokens per run. Validates the prompt chain end-to-end
 src/
   app/
     page.tsx              landing
-    audit/                public voice audit (no signup) — lead magnet
+    audit/                public writing-style audit (no signup) — lead magnet
     login/                Supabase auth (magic link / password / signup)
     onboarding/           12-question intake + 30-piece corpus upload
                           + RSS / URL list import
-    voice/                rendered Voice Profile (read-only viewer)
+    style/                rendered Style Profile (read-only viewer)
     generate/             source → 20 scored assets + per-asset regenerate
                           + audio/video transcribe panel
     dashboard/            counts, approval rate, recent generations
@@ -121,7 +121,7 @@ src/
     auth/callback/        Supabase OAuth code exchange
     auth/signout/         signs out + redirects
     api/
-      voice/build/        POST  builds Voice Profile JSON from corpus
+      voice/build/        POST  builds Style Profile JSON from corpus
       generate/           POST  20-asset bundle, each asset QA-scored
       regenerate/         POST  one asset, steered by previous + feedback
       qa/                 POST  re-score one asset
@@ -153,7 +153,7 @@ supabase/migrations/      schema + RLS policies
 
 ### Why Opus 4.7
 
-The Bible commits to one model. Opus 4.7 with `thinking: {type: "adaptive"}` is the right default — voice extraction and QA both benefit from extended reasoning. The Voice Profile is sent on every generation (and every QA call) for a creator, so it sits behind a `cache_control: {type: "ephemeral"}` breakpoint in the system block. That's a ~90% cost reduction on the cached prefix after the first call in a 5-minute window.
+The Bible commits to one model. Opus 4.7 with `thinking: {type: "adaptive"}` is the right default — style extraction and QA both benefit from extended reasoning. The Style Profile is sent on every generation (and every QA call) for a creator, so it sits behind a `cache_control: {type: "ephemeral"}` breakpoint in the system block. That's a ~90% cost reduction on the cached prefix after the first call in a 5-minute window.
 
 ## Roadmap
 
@@ -165,7 +165,7 @@ The Bible commits to one model. Opus 4.7 with `thinking: {type: "adaptive"}` is 
 
 1. Services first, software second.
 2. One niche until $20k MRR.
-3. The voice profile is the product.
+3. The style profile is the product.
 4. Ship the manual version before the automated one.
 5. Founder is the first creator.
 6. One model, one database, one frontend.

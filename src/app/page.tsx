@@ -7,26 +7,26 @@ export default function Home() {
           <br />
           Twenty platform-ready assets.
           <br />
-          <span className="text-accent">In your voice.</span>
+          <span className="text-accent">In your writing style.</span>
         </h1>
         <p className="mt-6 max-w-2xl text-lg text-ink/80">
           A content workflow engine for operator-creators. Drop in a podcast
           transcript, a long essay, or a recorded talk. Get back clips,
           captions, threads, LinkedIn posts, and newsletter sections — every
-          asset scored against your Voice Profile before it reaches you.
+          asset scored against your Style Profile before it reaches you.
         </p>
         <div className="mt-8 flex gap-3">
           <a
             href="/onboarding"
             className="rounded-md bg-ink px-5 py-3 font-sans text-sm font-medium text-cream no-underline hover:bg-accent"
           >
-            Build my voice profile
+            Build my style profile
           </a>
           <a
             href="/audit"
             className="rounded-md border border-ink/20 px-5 py-3 font-sans text-sm font-medium text-ink no-underline"
           >
-            Free voice audit (no signup)
+            Free style audit (no signup)
           </a>
         </div>
       </section>
@@ -34,8 +34,8 @@ export default function Home() {
       <section className="grid gap-8 md:grid-cols-3">
         <Card
           n="1"
-          title="Train your voice"
-          body="Upload 30+ source pieces. We extract a structured Voice Profile — signature phrases, hook patterns, tone vectors, audience specifics."
+          title="Capture your writing style"
+          body="Upload 30+ source pieces. We extract a structured Style Profile — signature phrases, hook patterns, tone vectors, audience specifics."
         />
         <Card
           n="2"
@@ -45,7 +45,7 @@ export default function Home() {
         <Card
           n="3"
           title="Score & ship"
-          body="Every asset comes with a six-dimension QA scorecard. Approve, regenerate, or edit. Edits feed back into your profile."
+          body="Every asset comes with a six-dimension QA scorecard. Approve, regenerate, or edit. Edits feed back into your style profile."
         />
       </section>
 
@@ -53,11 +53,13 @@ export default function Home() {
         <h2 className="text-xl font-semibold">The two specs that matter</h2>
         <ul className="mt-3 list-disc space-y-2 pl-6 text-ink/80">
           <li>
-            <strong>Voice Profile</strong> — a real, structured JSON object built
-            from your corpus. Not a fine-tune, not embeddings, not a vector DB.
+            <strong>Style Profile</strong> — a real, structured JSON object built
+            from your writing corpus. Captures how you write (sentence patterns,
+            hooks, signature phrases) — not your spoken voice. Not a fine-tune,
+            not embeddings, not a vector DB.
           </li>
           <li>
-            <strong>QA Rubric</strong> — six dimensions scored 0–10: voice match,
+            <strong>QA Rubric</strong> — six dimensions scored 0–10: style match,
             AI-tell density, specificity, hook strength, format fitness, CTA
             quality.
           </li>

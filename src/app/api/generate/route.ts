@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
     const voiceRow = await getLatestVoiceProfile(creator.id);
     if (!voiceRow) {
       return NextResponse.json(
-        { error: "No voice profile — complete onboarding first" },
+        { error: "No style profile — complete onboarding first" },
         { status: 400 },
       );
     }

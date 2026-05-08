@@ -79,7 +79,7 @@ export default function GeneratePage() {
         <h1 className="text-3xl font-semibold tracking-tight">Generate</h1>
         <p className="mt-2 text-ink/70">
           Paste one source piece — transcript, essay, or topic. Get back
-          ~20 assets in 60–90 seconds, scored against your Voice Profile.
+          ~20 assets in 60–90 seconds, scored against your Style Profile.
         </p>
       </div>
 
