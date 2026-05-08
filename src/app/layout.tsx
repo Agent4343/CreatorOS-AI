@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import { supabaseServer } from "@/lib/supabase/server";
+import { isAdmin } from "@/lib/admin";
 
 export const metadata: Metadata = {
   title: "CreatorOS AI",
@@ -24,6 +25,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const user = await getUser();
+  const admin = isAdmin(user?.id);
 
   return (
     <html lang="en">
@@ -43,6 +45,7 @@ export default async function RootLayout({
                   <a href="/generate">Generate</a>
                   <a href="/voice">Voice</a>
                   <a href="/billing">Billing</a>
+                  {admin && <a href="/admin" className="text-accent">Admin</a>}
                   <form action="/auth/signout" method="post">
                     <button
                       type="submit"

@@ -125,3 +125,52 @@ export async function listGenerations(creatorId: string) {
   if (error) throw error;
   return data;
 }
+
+// ---- Admin queries (service role; bypass RLS) ----
+
+export async function adminListCreators() {
+  const sb = supabaseService();
+  const { data, error } = await sb
+    .from("creators")
+    .select("id, user_id, display_name, niche, created_at")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data;
+}
+
+export async function adminGetCreator(creatorId: string) {
+  const sb = supabaseService();
+  const { data, error } = await sb
+    .from("creators")
+    .select("*")
+    .eq("id", creatorId)
+    .maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function adminListGenerationsForCreator(creatorId: string) {
+  const sb = supabaseService();
+  const { data, error } = await sb
+    .from("generations")
+    .select("id, created_at, assets")
+    .eq("creator_id", creatorId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+  if (error) throw error;
+  return data;
+}
+
+export async function adminCounts() {
+  const sb = supabaseService();
+  const [creators, profiles, generations] = await Promise.all([
+    sb.from("creators").select("*", { count: "exact", head: true }),
+    sb.from("voice_profiles").select("*", { count: "exact", head: true }),
+    sb.from("generations").select("*", { count: "exact", head: true }),
+  ]);
+  return {
+    creators: creators.count ?? 0,
+    voice_profiles: profiles.count ?? 0,
+    generations: generations.count ?? 0,
+  };
+}

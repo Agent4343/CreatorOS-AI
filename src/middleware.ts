@@ -7,6 +7,7 @@ const PROTECTED_PREFIXES = [
   "/generate",
   "/onboarding",
   "/billing",
+  "/admin",
 ];
 const API_PROTECTED_PREFIXES = [
   "/api/voice/build",
