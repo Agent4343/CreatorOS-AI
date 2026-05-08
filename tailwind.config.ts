@@ -6,13 +6,13 @@ export default {
     extend: {
       fontFamily: {
         sans: ["ui-sans-serif", "system-ui", "-apple-system", "sans-serif"],
-        serif: ["Georgia", "ui-serif", "serif"],
         mono: ["ui-monospace", "SFMono-Regular", "Menlo", "monospace"],
       },
       colors: {
-        ink: "#1a1a1a",
-        cream: "#f7f4ed",
-        accent: "#b14a2c",
+        ink: "#0a0a0a",
+        bg: "#fafaf9",
+        accent: "#e11d48",
+        muted: "#737373",
       },
     },
   },

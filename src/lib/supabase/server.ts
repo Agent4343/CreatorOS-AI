@@ -5,9 +5,7 @@ export async function supabaseServer() {
   const cookieStore = await cookies();
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) {
-    throw new Error("Supabase env vars not set");
-  }
+  if (!url || !key) throw new Error("Supabase env vars not set");
   return createServerClient(url, key, {
     cookies: {
       getAll: () => cookieStore.getAll(),
@@ -23,14 +21,8 @@ export async function supabaseServer() {
 export function supabaseService() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !serviceKey) {
-    throw new Error("Supabase service env vars not set");
-  }
-  // Service-role client bypasses RLS — only use in trusted server routes.
+  if (!url || !serviceKey) throw new Error("Supabase service env vars not set");
   return createServerClient(url, serviceKey, {
-    cookies: {
-      getAll: () => [],
-      setAll: () => {},
-    },
+    cookies: { getAll: () => [], setAll: () => {} },
   });
 }

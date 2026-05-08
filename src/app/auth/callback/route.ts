@@ -3,8 +3,7 @@ import { supabaseServer } from "@/lib/supabase/server";
 
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
-  const next = req.nextUrl.searchParams.get("next") ?? "/dashboard";
-
+  const next = req.nextUrl.searchParams.get("next") ?? "/generate";
   if (code) {
     const sb = await supabaseServer();
     const { error } = await sb.auth.exchangeCodeForSession(code);
@@ -14,6 +13,5 @@ export async function GET(req: NextRequest) {
       );
     }
   }
-
   return NextResponse.redirect(new URL(next, req.url));
 }

@@ -1,369 +1,346 @@
-# CreatorOS AI — Project Bible v2
+# Reel — Project Bible v1
 
-**An AI content workflow for operator-creators**
-*Version 2.0 · May 2026*
+**An AI comedy video factory: type a topic, get a 30-second comedy video starring your recurring AI persona.**
+*Working title: "Reel" — to be renamed before launch.*
+*Version 1.0 · May 2026*
 
 ---
 
-## 0. What changed from v1
+## 0. What this is
 
-This rewrite addresses eight strategic gaps:
+You set up a recurring AI character once — a name, a face, a voice, a comedy persona. After that, you type a one-line topic ("the way LinkedIn influencers talk about Mondays"), wait three minutes, and get back a 30-second vertical video of that character delivering a comedy bit on the topic. Ready to post to TikTok / Reels / Shorts.
 
-1. The "moat" is named honestly — voice + QA isn't defensible on its own.
-2. Pricing is restructured around a services-led model, not SaaS-led.
-3. The initial niche is reconsidered (fitness → operator-creators).
-4. The MVP is collapsed from a 6-month custom build to a 2-week no-code launch.
-5. A real distribution plan replaces the missing GTM section.
-6. Multi-agent architecture is deferred to v2; single-agent ships first.
-7. The Voice Profile and QA Rubric are specified concretely, not aspirationally.
-8. The product runs on Claude only for v1 — OpenAI is dropped until proven necessary.
+Same character every video. Same voice. Same comedic POV. Different topic each time.
 
 ---
 
 ## 1. Vision
 
-Become the workflow layer that lets independent operator-creators publish at agency scale without losing their voice.
+The lowest-friction path from "topic" to "posted comedy video." A creator goes from idea → published clip in under 5 minutes, without filming, scripting, editing, or animating anything themselves.
 
-We are not building an AI writer. We are replacing the editing-and-repurposing workflow that eats 15+ hours of a creator's week.
+We are not building a video editor. We are not building an avatar marketplace. We are building **one button that produces a finished comedy clip**.
 
 ---
 
-## 2. The problem, sharper
+## 2. The problem
 
-A creator with one weekly long-form output (podcast, video, newsletter) currently needs to:
+Short-form comedy is the highest-engagement content on every short-form platform — and the hardest to produce at volume. To ship one good 30-second clip, a comedy creator currently needs:
 
-- pull 3–5 short clips
-- write 2–4 captions per clip
-- write a thread or LinkedIn post
-- write a newsletter teaser
-- maintain a consistent voice across all of it
+- A premise / hook
+- A script that lands
+- A camera, lights, mic, and themselves on-screen
+- Editing software
+- ~3–6 hours from idea to published
 
-That's roughly 20 distinct artifacts from one source, every week. Generic AI tools produce drafts that get rewritten so heavily the creator might as well have started from scratch — because the tools don't know their voice, their stock phrases, their audience, or their formats.
+Posting at the cadence the algorithms reward (5–10 clips/week) means either burning out or hiring a team.
 
-The wedge is not "write faster." It is "produce 20 platform-ready assets from one source in under an hour, in your voice, without rewriting."
+What an AI version unlocks: **same persona, infinite topics, finished clips in minutes, zero on-screen presence required.** The bottleneck moves from production to taste — the creator picks topics, reviews, and ships. Everything else is automated.
 
 ---
 
 ## 3. The honest moat
 
-Voice matching and QA are table stakes. Castmagic, Opus, Particle, Jasper, and a hundred custom GPTs are racing to the same place. Calling this a moat is wishful.
+Talking-head AI video tooling is commoditizing fast. Hedra, HeyGen, Captions, and Synthesia all have APIs. Voice (ElevenLabs) is mature. Script generation (Claude / GPT) is generic.
 
-What is actually defensible, ranked:
+The defensible parts, ranked:
 
-1. **Accumulated creator data.** Once a creator has uploaded 50+ pieces and we've trained a voice profile, switching costs are real. The moat compounds with usage. This is the long-term defense.
-2. **A published QA rubric with public credibility.** If we publish "the 47 tells of AI-written content" and creators cite it, we own the category vocabulary. This is a marketing moat masquerading as a product moat. It works.
-3. **Service depth on top of software.** Done-for-you onboarding by humans who actually understand creator workflows is hard for a pure-software competitor to match. The service is the wedge; the software is the retention.
-4. **Niche-specific templates and benchmarks.** "What a great hook looks like for a fitness creator" is different from generic AI output. Owning the niche reference data matters more than owning the model.
+1. **Comedy quality of the script generator.** Most AI script tools produce LinkedIn-grade slop. Comedy is hard for LLMs because it requires specific hook structures, beats, callbacks, and a willingness to be sharp. A prompt + persona system that consistently produces *funny* — not just "comedy-shaped" — is the actual product.
+2. **Persona consistency.** Same face, same voice, same point-of-view across hundreds of clips. The audience identifies with a character, not a creator.
+3. **Speed of the loop.** "Topic → published" in under 5 minutes wins on every dimension that matters: experimentation rate, daily posting cadence, willingness to throw away mediocre clips.
 
-What is *not* a moat: the prompts, the multi-agent architecture, the model choice, "voice training" as a feature.
+What is **not** a moat:
+- The video model (we use someone else's)
+- The voice (we use ElevenLabs)
+- The general LLM (we use Claude)
+- A pretty UI
 
 ---
 
-## 4. Initial niche — a recommendation to pressure-test
+## 4. Initial niche — the recurring-character creator
 
-**v1 recommended:** Operator-creators on LinkedIn and newsletters (consultants, founders, B2B thought-leaders, course operators, agency owners with personal brands).
+**Who this is for:** indie creators who want to grow a faceless or pseudonymous channel on TikTok / Instagram Reels / YouTube Shorts.
 
-**v1 reasoning over fitness:**
+Three concrete profiles:
 
-| Criterion                       | Fitness creators                   | Operator-creators                                             |
-| ------------------------------- | ---------------------------------- | ------------------------------------------------------------- |
-| Willingness to pay for software | Low (they buy programs, not tools) | High (already paying for Notion, Superhuman, Taplio, Beehiiv) |
-| Average revenue per follower    | Low                                | High                                                          |
-| Source content quality          | Mostly video — needs transcription | Often already written (newsletters, posts)                    |
-| Voice training data available   | Captions, scripts                  | Long-form essays, transcripts, threads — much richer          |
-| Outbound channel                | Instagram DM (cold, noisy)         | LinkedIn DM, email (warm, professional)                       |
-| Founder-market fit risk         | Need to be plausibly fit           | Need to be plausibly thoughtful                               |
+| Persona | What they want | Why we win |
+|---|---|---|
+| **The faceless creator** — wants distribution but doesn't want to be on camera | A consistent on-screen "character" that isn't them | Recurring AI persona = built-in faceless brand |
+| **The over-extended creator** — already has a real face but can't ship at cadence | A second-channel persona for high-volume content | Same person can run a "main" channel and a sidekick AI channel |
+| **The format-tester** — runs many small experimental channels | Cheap iteration on personas + topics | Per-character setup is fast; per-clip cost is low |
 
-Fitness has volume; operator-creators have payment intent. Pick one and commit — the *worst* outcome is staying broad. If the founder has a strong fitness network or is themselves a fitness creator, that founder-market fit can override the table above. Otherwise, default to operator-creators.
-
-This decision should be made before any code is written.
+**Not for:** broadcasters who need their own face on screen, brands that need legal-clean talent, anyone whose audience would feel betrayed by AI.
 
 ---
 
 ## 5. Positioning
 
-**Not** an AI writer. **Not** a scheduler. **Not** a prompt library.
+**Not** an avatar generator. **Not** a video editor. **Not** a script tool.
 
-A **content workflow engine** that turns one source into twenty platform-ready assets in your voice.
+A **comedy clip factory**: type a topic, get a finished clip starring your recurring character.
 
-The category we want to own: *content operations for creators*.
+Category we want to own: *AI persona-driven short-form video.*
 
 ---
 
-## 6. The product in three honest phases
+## 6. Phases
 
-### Phase 0 — Manual + no-code (Weeks 1–4)
+### Phase 0 — Prove the comedy works (Weeks 1–3)
 
-**Goal: validate willingness to pay before writing custom code.**
+Before any code, validate that the script-generation prompt actually produces funny material. Steps:
 
-Stack:
+- Hand-design a comedy persona ("snarky tech analyst", "tired millennial parent", "gen-z cynic").
+- Ship 30 generated scripts through manual review. Score each 1–5 for "would I watch this."
+- Iterate the prompt until ≥40% score 4+.
 
-- Lindy or n8n for orchestration
-- Claude API for generation
-- Airtable for creator profile and content history
-- Notion as the client-facing dashboard
-- Loom for QA review (recorded, not automated)
+If we can't get to 40% on text alone, no amount of video polish will save us.
 
-Workflow per client:
+### Phase 1 — One-click clip factory (Weeks 4–10)
 
-- 1-hour onboarding call
-- Manually build a voice profile in a structured Notion doc
-- Set up a Lindy that takes a transcript URL and produces 20 assets
-- Founder personally reviews every output for the first 4 weeks per client
-
-**Sell to 5 paying creators at this phase.** If they will not pay for the manual version, they will not pay for the SaaS version.
-
-### Phase 1 — Software wrapper, services-led (Months 2–6)
-
-Build a thin web app that:
-
-- Accepts source content uploads (transcript, video → transcribe via Whisper, or pasted text)
-- Stores the voice profile as structured JSON (see §8)
-- Runs a single Claude call with tool use to generate platform assets
-- Runs a second Claude call as the QA reviewer (see §9)
-- Lets the creator approve, regenerate, or edit
-- Exports copy-ready assets per platform
+Web app. User signs up, sets up one character (uploads a reference image, picks a voice from ElevenLabs presets, writes a 100-word persona description), then enters topics and gets back finished clips.
 
 Stack (intentionally minimal):
 
-- Next.js frontend
-- Supabase (Postgres + auth + storage — one vendor for v1)
-- Claude API only
-- Vercel for hosting (Railway is fine but Vercel pairs better with Next.js)
-- Stripe for billing
+- Next.js (App Router) on Railway
+- Supabase (Postgres + auth + storage)
+- Anthropic Claude — comedy script generation
+- ElevenLabs — voice synthesis
+- Hedra (Character-3) — talking-head video generation from image + voice + script
+- Stripe — billing
 
 What's deferred to Phase 2:
 
-- Multi-agent orchestration
-- Redis queues
-- Scheduling
-- Analytics
-- OpenAI fallback
+- Custom voice cloning (use ElevenLabs presets only)
+- Multi-character scenes (single talking head only)
+- Captions / on-screen text overlays
+- Upload-to-platform automation
+- Scheduled posting
 
-### Phase 2 — Multi-agent + scheduling (Month 6+)
+### Phase 2 — Sharper clips, faster loop (Month 4+)
 
-Only build this after Phase 1 has paying retention >60% at 3 months. At that point, multi-agent (separate research, writer, repurpose, QA agents) earns its complexity. Until then, one well-prompted Claude call with structured outputs does the same job at 1/10th the engineering cost.
+Only build after Phase 1 has 50 paying users with >50% week-2 retention. At that point:
+
+- Custom voice cloning (record 1 minute of yourself, get a unique voice)
+- Burned-in captions for accessibility / autoplay
+- Background music and basic VFX
+- B-roll / cutaway shots between character beats
+- Direct posting to TikTok / Reels
 
 ---
 
-## 7. Voice Profile — concrete spec
+## 7. Character spec (the thing the user sets up once)
 
-The Voice Profile is the entire product. It needs to be a real, structured object — not a vague "tone profile."
-
-```json
+```
 {
-  "creator_id": "...",
-  "vocabulary": {
-    "signature_phrases": ["..."],
-    "avoided_phrases": ["..."],
-    "technical_level": "low|medium|high",
-    "reading_level_grade": 8
+  "character_id": "...",
+  "name": "Tom",
+  "reference_image": "https://...",          // 1024×1024, face-forward, neutral
+  "voice": {
+    "provider": "elevenlabs",
+    "voice_id": "...",
+    "stability": 0.5,
+    "similarity_boost": 0.75
   },
-  "sentence_patterns": {
-    "avg_length_words": 14,
-    "fragment_frequency": "low|medium|high",
-    "starts_with_conjunction": true,
-    "list_density": "low|medium|high"
+  "persona": {
+    "one_liner": "Snarky tech analyst who's seen it all",
+    "perspective": "...",                    // 100-word description
+    "delivery": "deadpan|hyped|exasperated|wry",
+    "vocabulary_hits": ["actually", "look", "hot take"],
+    "avoided_phrases": ["folks", "amazing"],
+    "running_jokes": ["VC bingo", "the year is 2027"],
+    "audience": "tech-adjacent millennials"
   },
-  "hook_library": [
-    { "pattern": "contrarian claim + one line of context", "example": "..." },
-    { "pattern": "specific number + outcome", "example": "..." }
-  ],
-  "cta_library": [
-    { "context": "newsletter close", "pattern": "...", "example": "..." }
-  ],
-  "tone_vectors": {
-    "formal_casual": -0.6,
-    "earnest_ironic": -0.2,
-    "prescriptive_reflective": 0.3,
-    "warm_clinical": -0.4
-  },
-  "format_preferences": {
-    "twitter": { "thread_length": [6,9], "uses_emojis": false },
-    "linkedin": { "para_length_lines": [1,3], "uses_horizontal_rules": true },
-    "newsletter": { "subhead_style": "sentence_case", "section_count": [3,5] }
-  },
-  "audience": {
-    "who": "...",
-    "pains": ["..."],
-    "objections": ["..."]
+  "format": {
+    "aspect_ratio": "9:16",
+    "target_duration_sec": 30,
+    "max_duration_sec": 45
   }
 }
 ```
 
-**Training data minimum:** 30 pieces of source content per creator to produce a usable profile. Below 30, results are unreliable. We tell creators this upfront.
-
-**How the profile is built:** A single Claude call with the full corpus as context, using a structured output schema. Not a fine-tune. Not embeddings. Not a vector DB. Context window + structured output is enough for v1.
+The persona block is what makes the same character produce consistent comedy across topics. It feeds Claude on every script generation.
 
 ---
 
-## 8. QA Rubric — concrete spec
-
-Every generated asset is scored across six dimensions, each 0–10. Public-facing scorecard.
-
-| Dimension           | What it checks                                                                                                                     |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| **Voice match**     | Vocabulary, sentence patterns, hook style match the Voice Profile                                                                  |
-| **AI-tell density** | Banned phrases ("delve", "leverage", "in today's fast-paced world", em-dash overuse, generic adjective stacking, hollow tricolons) |
-| **Specificity**     | Concrete nouns, named examples, numbers — vs. abstractions and platitudes                                                          |
-| **Hook strength**   | First line passes the "would I keep reading" test against patterns from the hook library                                           |
-| **Format fitness**  | Length, structure, line breaks match platform norms in the profile                                                                 |
-| **CTA quality**     | Clear, single, in-voice — or appropriately absent                                                                                  |
-
-Outputs scoring under 7 on any dimension are flagged with a specific suggestion ("This hook uses a generic 'In today's world' opener — your hook library favors contrarian claims; try X"). The scorecard is shown to the creator alongside every asset.
-
-This is the part competitors won't copy quickly because it requires opinionated judgment, not just a model call. We publish the rubric on a marketing site as "The 47 Tells" — the QA rubric becomes content marketing.
-
----
-
-## 9. Pricing — services-led
-
-The v1 pricing inverts the original. Setup is the high-margin product; software is the retention layer.
-
-**Setup (Done-For-You) — one-time**
-
-- **Starter setup** — $1,500
-  Voice profile built by us, 1 workflow live (e.g., podcast → 5 clips + 1 thread + 1 newsletter), training session.
-- **Studio setup** — $3,000
-  Everything above plus 3 workflows, custom hook + CTA libraries from their archive, 30-day hand-holding.
-
-**Software retainer — monthly**
-
-- **Solo** — $99/mo · 1 voice profile, 4 generations/week
-- **Pro** — $199/mo · 1 voice profile, unlimited, QA scorecard, priority support
-- **Team** — $399/mo · up to 3 voice profiles (creator + ghostwriter + agency use), unlimited
-
-**Why this works:** $1,500–$3,000 setup fees give immediate cash flow and weed out tire-kickers. The retainer is priced where creators already pay (Beehiiv $79, Taplio $65, Superhuman $30 — $99 is a believable add). The original $249 entry was 3× the comparable category.
-
----
-
-## 10. Architecture — Phase 1 (the version we actually build)
+## 8. Generation pipeline
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Next.js (Vercel)                      │
-│         Dashboard · Generator · QA review                │
-└────────────────────────┬────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────┐
-│              Next.js API routes (Vercel)                 │
-│   /upload  /voice/build  /generate  /qa  /export         │
-└────┬─────────────────┬───────────────────┬──────────────┘
-     │                 │                   │
-     ▼                 ▼                   ▼
-┌─────────┐    ┌──────────────┐   ┌──────────────────┐
-│Supabase │    │  Claude API  │   │  Whisper (or     │
-│Postgres │    │  (one model) │   │  AssemblyAI) for │
-│Auth     │    │              │   │  transcription   │
-│Storage  │    └──────────────┘   └──────────────────┘
-└─────────┘
+User types topic
+       │
+       ▼
+┌────────────────────┐
+│ Claude — script    │  ~10 sec, ~$0.05
+│ persona + topic →  │
+│ 30-sec script      │
+└──────────┬─────────┘
+           │  script (text)
+           ▼
+┌────────────────────┐
+│ ElevenLabs — voice │  ~15 sec, ~$0.02
+│ script + voice_id  │
+│ → MP3              │
+└──────────┬─────────┘
+           │  audio file
+           ▼
+┌────────────────────┐
+│ Hedra — video      │  ~3 min, ~$0.50
+│ image + audio +    │
+│ persona → MP4      │
+└──────────┬─────────┘
+           │  video URL
+           ▼
+       Library
+```
+
+**Total**: ~3 minutes wall-clock, ~$0.60 per clip. We charge $0.99–1.99 per clip on a credit pack model, or unlimited monthly tiers.
+
+The Hedra step is async — we kick the job off, persist the job ID, and poll (or webhook) until done. Everything else is sync.
+
+---
+
+## 9. Pricing — credit-based
+
+Setup is free. Comedy is volume-driven, so the right model is per-clip credits with a bulk discount.
+
+**Monthly credit packs:**
+
+- **Trial** — 3 free clips, no credit card. Burns down fast on purpose; converts the curious.
+- **Hobbyist** — $19 / mo · 20 clips/mo · 1 character
+- **Creator** — $49 / mo · 60 clips/mo · 3 characters
+- **Pro** — $99 / mo · 150 clips/mo · 10 characters
+- **Studio** — custom · enterprise / agency
+
+**One-time top-ups** at $1.50 / clip for users who blow through their pack mid-month.
+
+**Why credit packs over flat-rate:** unit cost per clip is ~$0.60 to us (Hedra dominates). A Pro user generating 150 clips costs us ~$90 — Pro tier covers it with a thin margin. Flat-rate "unlimited" plans get gamed by power users and erase the margin. Credits are honest.
+
+---
+
+## 10. Architecture — Phase 1
+
+```
+┌──────────────────────────────────────────────────┐
+│              Next.js (Railway)                   │
+│  /character  /generate  /library  /billing       │
+└────────┬─────────────────────────────────────────┘
+         │
+         ▼
+┌──────────────────────────────────────────────────┐
+│             Next.js API routes                   │
+│  /character    /generate   /jobs/poll            │
+│  /webhooks/hedra           /webhooks/stripe      │
+└────┬───────────┬──────────────┬──────────────────┘
+     │           │              │
+     ▼           ▼              ▼
+┌─────────┐ ┌─────────┐ ┌─────────────────────┐
+│Supabase │ │ Claude  │ │ External video APIs │
+│Postgres │ │ Eleven  │ │  · Hedra (primary)  │
+│Auth     │ │ Labs    │ │  · HeyGen (backup)  │
+│Storage  │ │         │ │                     │
+└─────────┘ └─────────┘ └─────────────────────┘
 ```
 
 **Database tables (Phase 1):**
 
-- `creators` — profile, niche, audience, billing
-- `voice_profiles` — the JSON object in §7, versioned
-- `source_content` — uploaded raw content
-- `generations` — output assets, QA scores, approval state, regeneration history
-- `workflows` — saved generation recipes per creator
+- `users` — Supabase auth + profile
+- `characters` — one row per user-defined persona
+- `clips` — every generation, with `status` (queued | scripting | voicing | rendering | done | failed)
+- `script_revisions` — store every Claude script call so we can A/B prompts
+- `credits` — wallet balance + pack purchases
+- `subscriptions` — Stripe state
 
-**No Redis. No queues. No microservices.** Generation runs synchronously via streaming response. Add async jobs only when latency or cost forces it.
+**Async pattern**: Hedra render takes 1–4 minutes. We use a single cron-style poll route (`/api/jobs/poll`, hit by Railway's cron or a 30-second interval client poll) plus a webhook (`/api/webhooks/hedra`) when supported. No Redis, no BullMQ — just a `clips.status` field + the provider's own job queue.
+
+**Storage**: video MP4 files live in Supabase Storage. We hand the user a signed URL.
 
 **Environment variables:**
 
 ```
-DATABASE_URL=
 ANTHROPIC_API_KEY=
-SUPABASE_URL=
-SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-STRIPE_SECRET_KEY=
-WHISPER_API_KEY=
-```
+ELEVENLABS_API_KEY=
+HEDRA_API_KEY=
 
-That's it for v1. Seven keys, four services, one model.
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+
+ADMIN_USER_IDS=
+```
 
 ---
 
 ## 11. User flow — Phase 1
 
-1. **Onboarding (10 min):** Creator answers a 12-question voice intake, uploads 30+ source pieces (or links to a YouTube channel / Substack we scrape).
-2. **Voice Profile build (3 min):** One Claude call produces the JSON profile. Creator reviews and edits in a structured form.
-3. **First generation:** Creator pastes a transcript or topic. System produces a 20-asset bundle in 60–90 seconds, with QA scores attached to each.
-4. **Review:** Creator approves, regenerates flagged assets, or edits in place. Edits are logged and fed back into the profile (silent learning).
-5. **Export:** Copy buttons per platform. CSV / Notion / Buffer exports as fast-follows.
+1. **Sign up.** Email + password (Supabase auth). Lands on `/character/new`.
+2. **Set up character (~5 min).** Upload a reference image (we suggest free Unsplash portraits or Midjourney outputs they own). Pick a voice from ElevenLabs presets (we narrow to ~12 hand-curated options). Write a 100-word persona description. Save.
+3. **Generate (~3 min wait).** Type a topic. Click Generate. Watch a progress indicator: *Writing script… Recording voice… Rendering video…*
+4. **Review.** Video plays inline. Three buttons: **Download**, **Regenerate** (gives Claude a feedback note like "punchier", "shorter", "less obvious"), **Trash**.
+5. **Library.** All past clips sortable by date / character / topic.
+
+**No on-platform posting in Phase 1.** Download and post manually. Auto-post comes only after we've earned trust on quality.
 
 ---
 
-## 12. Distribution — the section v1 was missing
+## 12. Distribution — the section that has to come early
 
-Three loops, all running in parallel from Day 1.
+Same three-loop structure as any AI creator tool, with one twist:
 
-### Loop 1 — Founder-as-creator
+### Loop 1 — Build a public character on the product
 
-The founder publishes weekly on the same platforms our customers do. Every public post is implicit proof the system works. This is the single highest-leverage marketing channel and it costs zero money.
+The fastest proof is a TikTok / Reels channel run *entirely* with the product. We pick a persona ("Tom, the snarky tech analyst" or whatever lands), commit to 5 clips/week for 12 weeks, and let the audience growth (or lack of it) be the live demo.
 
-- LinkedIn: 3 posts/week
-- Newsletter: weekly, ~600 words, in-house
-- X: daily, threaded weekly
+Founder-as-creator, except the creator is fictional.
 
-### Loop 2 — Public case studies
+### Loop 2 — Side-by-side clips
 
-For each of the first 10 customers: a documented before/after. "How {creator} went from 4 hours/week on captions to 25 minutes." Each case study becomes a landing page, a thread, and an outbound asset.
+For every paying user, ask permission to feature one clip on the marketing site as a case study. Real persona, real topic, real output. 10 clips of varied personas does more than any landing-page copy.
 
-### Loop 3 — Outbound, not paid acquisition
+### Loop 3 — Free trial does the selling
 
-For the first 50 customers, no paid ads. Channel mix:
-
-- Targeted LinkedIn DMs (50/week, manual, personalized) to operator-creators in the 10–150k follower range
-- Cold email to newsletter operators (~20/week)
-- Comment-presence on the top 30 LinkedIn voices in the niche (genuine, useful comments — not pitches)
-
-**The Audit-as-lead-magnet play:** offer a free 15-minute "voice audit" — we run their last 10 posts through our QA rubric and send back a one-pager. High intent, low cost, naturally converts.
+Three free clips on signup, no credit card. The first one shocks people. The second has them showing it to a friend. The third converts. **Credit gates and pricing screens never see the user before their first finished clip.**
 
 ---
 
 ## 13. Metrics that actually matter
 
-Everything else is vanity. Track these weekly:
+|Metric                                     |Target by Month 6    |
+|-------------------------------------------|---------------------|
+|Trial → paid conversion                    |>15%                 |
+|Paid users                                 |200                  |
+|Median clips/user/month (paid)             |>15                  |
+|Week-2 retention                           |>50%                 |
+|Time from signup → first finished clip     |<10 minutes          |
+|Funny rate (% clips user keeps)            |>50%                 |
+|MRR                                        |$8k+                 |
 
-| Metric                                      | Target by Month 6     |
-| ------------------------------------------- | --------------------- |
-| Paid customers                              | 30                    |
-| Setup → retainer conversion                 | >70%                  |
-| 3-month retention                           | >60%                  |
-| Approval rate (assets shipped without edit) | >50%                  |
-| Time-to-first-published-asset               | <24 hours from signup |
-| Net revenue retention                       | >100%                 |
-| MRR                                         | $6k+                  |
-
-Time saved per creator is the marketing metric. Approval rate is the product metric. Retention is the only metric that proves the product works.
+**Funny rate** is the leading indicator. Below 50% kept-clips, retention dies. Above 70%, we have a real product.
 
 ---
 
 ## 14. Risks and mitigations
 
-| Risk                                      | Mitigation                                                                                                                 |
-| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| Voice match isn't good enough             | Phase 0 manual review for 4 weeks per client. Don't ship Phase 1 until manual approval rate >50%.                          |
-| A bigger player ships the same thing      | Niche depth and accumulated voice data. Don't try to be horizontal.                                                        |
-| Claude API pricing or availability shifts | Build the prompt layer behind a thin abstraction so model swap is a 1-day job, not a refactor. Don't optimize prematurely. |
-| Creators churn after the setup fee        | Tie the Phase 0 setup to a 90-day minimum retainer. Setup fee is non-refundable, retainer prorates.                        |
-| Service layer doesn't scale past founder  | Document the onboarding playbook from client #1 so it can be delegated by client #20.                                      |
+|Risk|Mitigation|
+|---|---|
+|Comedy isn't actually funny|Phase 0 hand-validation. Don't write app code until 40% of generated scripts pass the "would I watch" bar.|
+|Hedra is slow / unreliable|Abstract video provider behind one interface; HeyGen as a hot backup. Status page + per-clip retries.|
+|Hedra raises prices or shuts the API|Same provider abstraction. Open-weights talking-head models (LivePortrait, Hallo) are improving fast and could be self-hosted by Phase 2.|
+|Audiences reject "AI character" content|Lean into it as a feature, not a bug. The persona is a known-AI character with consistent identity, not a deepfake of a real person.|
+|Misuse: deepfakes of real people|Reference images go through a face-match check against a known-public-figures database. Reject obvious matches.|
+|Cost per clip kills the margin|Per-clip credits, not flat-rate. Real-time monitoring of cost-per-clip per user.|
 
 ---
 
 ## 15. Strategic rules
 
-1. **Services first, software second.** Cash flow now, not in 18 months.
-2. **One niche until $20k MRR.** Expansion comes after dominance, not before.
-3. **The voice profile is the product.** Everything else is a wrapper on top.
-4. **Ship the manual version before the automated one.** Always.
-5. **Founder is the first creator.** No exceptions.
-6. **One model, one database, one frontend** until growth forces otherwise.
-7. **Compete on workflow ownership and creator outcomes — never on AI capability.**
+1. **Funny first.** Until the comedy works in pure text, we don't ship anything else.
+2. **One character per user, until proven.** Multi-character is Phase 1.5.
+3. **Three providers max.** Claude, ElevenLabs, Hedra. Every additional provider is engineering debt.
+4. **Per-clip economics, always.** Never offer a plan whose unit economics depend on customers not using it.
+5. **The character is the brand.** Long-term, the audience belongs to the character, not to the creator behind it. Build for that.
+6. **Founder runs a public character.** From day one. The proof is on a public feed, not in a deck.
 
 ---
 
-*v2 is opinionated by design. Disagreement on any specific call is welcome — the document exists to be argued with.*
+*v1 is opinionated by design. Disagreement on any specific call is welcome — the document exists to be argued with.*

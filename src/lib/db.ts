@@ -1,84 +1,72 @@
 import { supabaseService } from "./supabase/server";
-import { GeneratedAsset, QAScorecard, VoiceProfile } from "./types";
+import { Character, ClipStatus, Persona, Script } from "./types";
 
-export async function getCurrentCreator(userId: string) {
+export async function listCharacters(userId: string) {
   const sb = supabaseService();
   const { data, error } = await sb
-    .from("creators")
+    .from("characters")
     .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as Character[];
+}
+
+export async function getCharacter(id: string, userId: string) {
+  const sb = supabaseService();
+  const { data, error } = await sb
+    .from("characters")
+    .select("*")
+    .eq("id", id)
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw error;
-  return data;
+  return data as Character | null;
 }
 
-export async function upsertCreator(userId: string, fields: {
-  display_name?: string;
-  niche?: string;
+export async function createCharacter(args: {
+  userId: string;
+  name: string;
+  reference_image_url: string;
+  voice_id: string;
+  persona: Persona;
+  voice_stability?: number;
+  voice_similarity_boost?: number;
 }) {
   const sb = supabaseService();
   const { data, error } = await sb
-    .from("creators")
-    .upsert({ user_id: userId, ...fields }, { onConflict: "user_id" })
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
-}
-
-export async function saveVoiceProfile(creatorId: string, profile: VoiceProfile) {
-  const sb = supabaseService();
-  const { data, error } = await sb
-    .from("voice_profiles")
-    .insert({ creator_id: creatorId, profile })
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
-}
-
-export async function getLatestVoiceProfile(creatorId: string) {
-  const sb = supabaseService();
-  const { data, error } = await sb
-    .from("voice_profiles")
-    .select("*")
-    .eq("creator_id", creatorId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (error) throw error;
-  return data;
-}
-
-export async function saveSourceContent(
-  creatorId: string,
-  body: string,
-  kind: string,
-) {
-  const sb = supabaseService();
-  const { data, error } = await sb
-    .from("source_content")
-    .insert({ creator_id: creatorId, body, kind })
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
-}
-
-export async function saveGeneration(args: {
-  creatorId: string;
-  sourceId: string;
-  voiceProfileId: string;
-  assets: Array<GeneratedAsset & { qa: QAScorecard }>;
-}) {
-  const sb = supabaseService();
-  const { data, error } = await sb
-    .from("generations")
+    .from("characters")
     .insert({
-      creator_id: args.creatorId,
-      source_id: args.sourceId,
-      voice_profile_id: args.voiceProfileId,
-      assets: args.assets,
+      user_id: args.userId,
+      name: args.name,
+      reference_image_url: args.reference_image_url,
+      voice_provider: "elevenlabs",
+      voice_id: args.voice_id,
+      voice_stability: args.voice_stability ?? 0.5,
+      voice_similarity_boost: args.voice_similarity_boost ?? 0.75,
+      persona: args.persona,
+      aspect_ratio: "9:16",
+      target_duration_sec: 30,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as Character;
+}
+
+export async function createClip(args: {
+  userId: string;
+  characterId: string;
+  topic: string;
+}) {
+  const sb = supabaseService();
+  const { data, error } = await sb
+    .from("clips")
+    .insert({
+      user_id: args.userId,
+      character_id: args.characterId,
+      topic: args.topic,
+      status: "queued" as ClipStatus,
     })
     .select()
     .single();
@@ -86,91 +74,55 @@ export async function saveGeneration(args: {
   return data;
 }
 
-export async function updateSubscriptionByCustomer(
-  stripeCustomerId: string,
+export async function updateClip(
+  clipId: string,
   fields: {
-    stripe_subscription_id?: string;
-    tier?: string;
-    status?: string;
-    current_period_end?: string;
+    status?: ClipStatus;
+    script?: Script | null;
+    audio_url?: string | null;
+    video_url?: string | null;
+    hedra_job_id?: string | null;
+    error?: string | null;
+    completed_at?: string | null;
   },
 ) {
   const sb = supabaseService();
-  const { error } = await sb
-    .from("subscriptions")
-    .update({ ...fields, updated_at: new Date().toISOString() })
-    .eq("stripe_customer_id", stripeCustomerId);
+  const { error } = await sb.from("clips").update(fields).eq("id", clipId);
   if (error) throw error;
 }
 
-export async function getSubscription(creatorId: string) {
+export async function getClip(id: string, userId: string) {
   const sb = supabaseService();
   const { data, error } = await sb
-    .from("subscriptions")
+    .from("clips")
     .select("*")
-    .eq("creator_id", creatorId)
+    .eq("id", id)
+    .eq("user_id", userId)
     .maybeSingle();
   if (error) throw error;
   return data;
 }
 
-export async function listGenerations(creatorId: string) {
+export async function listClips(userId: string) {
   const sb = supabaseService();
   const { data, error } = await sb
-    .from("generations")
-    .select("id, created_at, assets")
-    .eq("creator_id", creatorId)
-    .order("created_at", { ascending: false })
-    .limit(20);
-  if (error) throw error;
-  return data;
-}
-
-// ---- Admin queries (service role; bypass RLS) ----
-
-export async function adminListCreators() {
-  const sb = supabaseService();
-  const { data, error } = await sb
-    .from("creators")
-    .select("id, user_id, display_name, niche, created_at")
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  return data;
-}
-
-export async function adminGetCreator(creatorId: string) {
-  const sb = supabaseService();
-  const { data, error } = await sb
-    .from("creators")
-    .select("*")
-    .eq("id", creatorId)
-    .maybeSingle();
-  if (error) throw error;
-  return data;
-}
-
-export async function adminListGenerationsForCreator(creatorId: string) {
-  const sb = supabaseService();
-  const { data, error } = await sb
-    .from("generations")
-    .select("id, created_at, assets")
-    .eq("creator_id", creatorId)
+    .from("clips")
+    .select("id, character_id, topic, status, video_url, created_at, completed_at")
+    .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(50);
   if (error) throw error;
-  return data;
+  return data ?? [];
 }
 
-export async function adminCounts() {
+export async function listInFlightClips(limit = 20) {
   const sb = supabaseService();
-  const [creators, profiles, generations] = await Promise.all([
-    sb.from("creators").select("*", { count: "exact", head: true }),
-    sb.from("voice_profiles").select("*", { count: "exact", head: true }),
-    sb.from("generations").select("*", { count: "exact", head: true }),
-  ]);
-  return {
-    creators: creators.count ?? 0,
-    voice_profiles: profiles.count ?? 0,
-    generations: generations.count ?? 0,
-  };
+  const { data, error } = await sb
+    .from("clips")
+    .select("*")
+    .in("status", ["rendering"])
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  if (error) throw error;
+  return data ?? [];
 }

@@ -1,29 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-const PROTECTED_PREFIXES = [
-  "/dashboard",
-  "/style",
-  "/generate",
-  "/onboarding",
-  "/billing",
-  "/admin",
-];
-const API_PROTECTED_PREFIXES = [
-  "/api/voice/build",
+const PROTECTED_PAGES = ["/generate", "/library", "/character"];
+const PROTECTED_API = [
   "/api/generate",
-  "/api/regenerate",
-  "/api/qa",
-  "/api/upload",
-  "/api/export",
-  "/api/transcribe",
-  "/api/scrape",
-  "/api/stripe/checkout",
+  "/api/character",
+  "/api/clips",
 ];
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next({ request: req });
-
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return res;
@@ -38,31 +24,28 @@ export async function middleware(req: NextRequest) {
       },
     },
   });
-
-  // Refreshes the session cookie when needed.
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   const path = req.nextUrl.pathname;
-  const isProtectedPage = PROTECTED_PREFIXES.some((p) => path.startsWith(p));
-  const isProtectedApi = API_PROTECTED_PREFIXES.some((p) => path.startsWith(p));
+  const protectedPage = PROTECTED_PAGES.some((p) => path.startsWith(p));
+  const protectedApi = PROTECTED_API.some((p) => path.startsWith(p));
 
-  if (!user && isProtectedPage) {
+  if (!user && protectedPage) {
     const redirect = req.nextUrl.clone();
     redirect.pathname = "/login";
     redirect.searchParams.set("next", path);
     return NextResponse.redirect(redirect);
   }
-  if (!user && isProtectedApi) {
+  if (!user && protectedApi) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
   return res;
 }
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|mp4)$).*)",
   ],
 };

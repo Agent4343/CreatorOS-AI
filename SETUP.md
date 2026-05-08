@@ -1,43 +1,37 @@
-# Setup — go from zero to a running CreatorOS AI
+# Setup — Reel from zero to running
 
-End-to-end recipe for bootstrapping the app, signing yourself up as the admin, and using it as a real creator.
+End-to-end recipe to get the comedy clip factory running on your machine, then deployed to Railway.
 
-Three accounts you need:
-- **Supabase** — free tier is fine
-- **Anthropic** — pay-as-you-go, ~$5 of credit gets you started
-- **Railway** — for hosting
+Five accounts:
 
-OpenAI (Whisper) and Stripe are **optional** — paste-only generation works without Whisper, and `/billing` is hidden until you set Stripe keys.
+- **Anthropic** — script generation. ~$5 of credit gets you started.
+- **ElevenLabs** — voice. $5 starter plan is fine for testing.
+- **Hedra** — talking-head video. Pay-as-you-go; ~$0.50/clip on Character-3.
+- **Supabase** — Postgres + auth + storage. Free tier works.
+- **Railway** — hosting. Free tier works for testing.
 
 ---
 
 ## 1 · Supabase
 
-### Create the project
-
-1. supabase.com → New project. Pick a name, region, set a DB password (save it).
-2. Wait for it to provision (~2 min).
-
-### Apply the migrations
-
-3. Left sidebar → **SQL Editor** → New query.
-4. Paste the contents of `supabase/migrations/0001_init.sql`. Run.
-5. New query. Paste `supabase/migrations/0002_subscriptions.sql`. Run.
-
-### Grab the keys
-
-6. Left sidebar → **Settings → API**. Copy:
-   - **Project URL** → `NEXT_PUBLIC_SUPABASE_URL`
-   - **anon / public key** → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - **service_role / secret key** → `SUPABASE_SERVICE_ROLE_KEY`
-
-   The service role key bypasses RLS. Never put it in client code.
+1. supabase.com → New project.
+2. **SQL Editor** → New query → paste `supabase/migrations/0001_init.sql` → Run. (Creates the `characters` and `clips` tables, the `clip-assets` storage bucket, and RLS policies.)
+3. **Settings → API** → copy:
+   - Project URL → `NEXT_PUBLIC_SUPABASE_URL`
+   - anon key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - service_role key → `SUPABASE_SERVICE_ROLE_KEY`
 
 ---
 
-## 2 · Anthropic key
+## 2 · Provider keys
 
-console.anthropic.com → API Keys → Create. Copy → `ANTHROPIC_API_KEY`. Add at least $5 of credit.
+| Service | Where to get the key | Env var |
+|---|---|---|
+| Anthropic | console.anthropic.com → API Keys | `ANTHROPIC_API_KEY` |
+| ElevenLabs | elevenlabs.io → Profile → API key | `ELEVENLABS_API_KEY` |
+| Hedra | hedra.com → API settings | `HEDRA_API_KEY` |
+
+Then open `src/lib/providers/elevenlabs.ts` and replace the `voice_id` placeholders in `CURATED_VOICES` with real IDs from your ElevenLabs Voices dashboard.
 
 ---
 
@@ -45,98 +39,68 @@ console.anthropic.com → API Keys → Create. Copy → `ANTHROPIC_API_KEY`. Add
 
 ```bash
 cp .env.example .env.local
-# fill in the four required vars from steps 1-2
+# fill the keys from steps 1-2
 npm install
 npm run dev
 ```
 
 Open http://localhost:3000.
 
-### Sign up as yourself
+### Validate the comedy first
 
-1. Click **Sign in** → "New here? Create account" → enter your email + password (or use a magic link).
-2. After confirming, you'll land on `/dashboard`.
-
-### Make yourself admin
-
-3. In Supabase → **Authentication → Users**, find your row, copy the `id` (a UUID).
-4. Add it to `.env.local`:
-   ```
-   ADMIN_USER_IDS=<paste the UUID>
-   ```
-5. Restart `npm run dev`.
-6. Refresh the app. You should see an **Admin** link in the nav. Click it → `/admin` shows counts and all creators (currently just you, with no profile).
-
-Add more admins by comma-separating: `ADMIN_USER_IDS=uuid1,uuid2,uuid3`.
-
----
-
-## 4 · Walk through the product
-
-1. Click **Onboarding**.
-2. Either paste an RSS feed URL (your blog, your Substack) or paste 30+ pieces of your own writing separated by lines containing only `---`.
-3. Wait until the progress bar shows **30/30 · ready**.
-4. Optionally open the "About you" section and fill in 4 quick questions. Skipping is fine — Claude infers from the corpus.
-5. Click **Build style profile**. ~3 minutes. Costs ~$0.50 in Anthropic tokens.
-6. Lands on `/style` showing your structured profile.
-7. Click **Generate**. Paste a podcast transcript or essay. Click **Generate bundle**. ~60–90 seconds. Costs ~$0.50–1 per generation.
-8. Review the 20 assets. Click **regenerate** on any flagged ones. Optionally type feedback.
-9. Click **Export CSV** or **Export JSON** to get the bundle out.
-
-### Smoke test (without going through the UI)
+Per BIBLE.md §6 Phase 0: don't waste time on UI until the script generator works.
 
 ```bash
-npm run smoke
+npm run smoke:script
 ```
 
-Runs `style-build → generate → QA(first 3)` against a synthetic operator-creator fixture. ~$1–2 per run. Lets you validate the prompt chain produces parseable JSON without touching Supabase or the API routes.
+Generates 5 comedy scripts against a fixture persona and prints them. Score each 1–5 ("would I watch this"). If <40% score 4+, iterate `src/lib/prompts/script.ts` and run again. Don't move on until the comedy lands.
+
+### Walk through the product
+
+1. Sign up at `/login` (magic link or password).
+2. Go to `/character/new`. Upload an image URL (Unsplash portrait works for testing). Pick a voice. Write a persona. Save.
+3. Go to `/generate`. Type a topic. Click Generate. Status updates show *Writing script → Recording voice → Rendering video*. Total ~3 min.
+4. Video plays inline when ready. Library at `/library`.
 
 ---
 
-## 5 · Deploy to Railway
+## 4 · Deploy to Railway
 
-1. railway.app → New Project → Deploy from GitHub repo. Pick `Agent4343/CreatorOS-AI`. Pick the branch.
-2. **Settings → Environment**: paste in everything from your `.env.local`. At minimum:
-   ```
-   ANTHROPIC_API_KEY
-   NEXT_PUBLIC_SUPABASE_URL
-   NEXT_PUBLIC_SUPABASE_ANON_KEY
-   SUPABASE_SERVICE_ROLE_KEY
-   ADMIN_USER_IDS
-   ```
-3. **Settings → Networking → Generate Domain**.
-4. **Settings → Healthcheck Path**: `/api/health`. Save.
-5. Deploy. First build takes ~3 min.
-6. Visit your Railway domain. Sign up using the same email as locally if you want to share data, or fresh if you want a clean prod environment.
+1. railway.app → New Project → Deploy from GitHub repo.
+2. **Settings → Environment** → paste in all keys from `.env.local`.
+3. **Settings → Healthcheck Path** → `/api/health`. Returns 503 with the missing-keys list if anything is unset.
+4. **Settings → Networking → Generate Domain**.
+5. Deploy.
+
+### Cron for the polling endpoint
+
+Hedra renders are async and can take 1–4 minutes. The app needs to poll Hedra periodically to detect completion. Two options:
+
+**Option A — Railway cron** (recommended). Add a cron schedule that hits `POST /api/jobs/poll` every 30 seconds with `Authorization: Bearer $CRON_SECRET`.
+
+**Option B — Hedra webhook**. If/when Hedra adds webhook support, point it at `/api/webhooks/hedra` (route is reserved but not yet implemented).
+
+Set `CRON_SECRET` in env to a random string. The poll route requires this token.
 
 ---
 
-## 6 · Optional add-ons
+## 5 · Make yourself admin (optional)
 
-### Whisper (audio/video → transcript)
+`ADMIN_USER_IDS` is a comma-separated list of Supabase auth UUIDs. Members see admin tooling (TBD). Find your UUID at Supabase → Authentication → Users.
 
-Get an OpenAI API key. Add to env:
-```
-WHISPER_API_KEY=sk-...
-```
-The "Transcribe audio or video" panel on `/generate` becomes functional.
+---
 
-### Stripe billing
+## 6 · Going to production
 
-1. dashboard.stripe.com → in test mode → **Products**. Create three recurring products:
-   - Solo · $99 / month
-   - Pro · $199 / month
-   - Team · $399 / month
-2. Copy each price ID (`price_...`) and add to env:
-   ```
-   STRIPE_SECRET_KEY=sk_test_...
-   STRIPE_PRICE_SOLO=price_...
-   STRIPE_PRICE_PRO=price_...
-   STRIPE_PRICE_TEAM=price_...
-   ```
-3. **Webhooks** → Add endpoint → URL: `https://<your-railway-domain>/api/stripe/webhook` → events: `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`, `customer.subscription.deleted`. Copy the signing secret → `STRIPE_WEBHOOK_SECRET`.
+Before charging real money:
 
-`/billing` will now drive real test-mode checkouts.
+- Stripe products created (`Hobbyist $19`, `Creator $49`, `Pro $99`) and IDs in env
+- Stripe webhook endpoint pointed at `/api/webhooks/stripe` (route reserved)
+- A face-match check on uploaded reference images (BIBLE.md §14 risk row 5)
+- Per-clip credit accounting (deduct on generate, refund on failed render)
+
+These are not built yet — they're Phase 1 milestones, not Phase 0.
 
 ---
 
@@ -144,13 +108,13 @@ The "Transcribe audio or video" panel on `/generate` becomes functional.
 
 | Symptom | Likely cause |
 |---|---|
-| `/api/health` returns 503 with a `missing` array | One of the required env vars isn't set. The list tells you which. |
-| Onboarding 401s on submit | Cookie didn't propagate after signup. Sign out and back in. |
-| `npm run smoke` fails with "ANTHROPIC_API_KEY is not set" | Either fill `.env.local` or `export ANTHROPIC_API_KEY=...` in your shell. |
-| Build profile fails with "At least 30 source pieces required" | The corpus separator is exactly a line containing `---` and nothing else. Imported pieces use this automatically. |
-| Admin link doesn't appear | Restart `npm run dev` after editing `.env.local`. Confirm the UUID matches the one in Supabase → Authentication → Users. |
-| Generation produces JSON parse errors | Likely a transient Claude issue. Retry once. If persistent, file an issue. |
+| `/api/health` returns 503 | Some required env var is missing. Response body lists which. |
+| Script generation 401 | `ANTHROPIC_API_KEY` invalid or missing |
+| Voice synth 401 | `ELEVENLABS_API_KEY` invalid, or the `voice_id` in your character record isn't in your ElevenLabs account |
+| Hedra render fails | Check Hedra dashboard for the job. Common causes: image isn't face-forward, audio is too long, account out of credit |
+| Video shows status `rendering` for >10 min | Cron poll isn't running. Check Railway cron config or hit `/api/jobs/poll` manually with the bearer token |
+| RLS error on character create | Service role key not set, or the user_id in the request doesn't match the signed-in user |
 
 ---
 
-That's the whole setup. Total cost to validate end-to-end: ~$3 of Anthropic tokens, $0 of infra (Supabase + Railway free tiers).
+Total cost to validate end-to-end: ~$3 of API spend (one persona + 5 sample scripts + one finished clip).

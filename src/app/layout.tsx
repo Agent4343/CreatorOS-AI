@@ -1,12 +1,11 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import { supabaseServer } from "@/lib/supabase/server";
-import { isAdmin } from "@/lib/admin";
 
 export const metadata: Metadata = {
-  title: "CreatorOS AI",
+  title: "Reel — AI comedy clip factory",
   description:
-    "A content workflow engine that turns one source into twenty platform-ready assets in your voice.",
+    "Type a topic, get a 30-second comedy video starring your recurring AI character.",
 };
 
 async function getUser() {
@@ -25,48 +24,38 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const user = await getUser();
-  const admin = isAdmin(user?.id);
 
   return (
     <html lang="en">
-      <body className="min-h-screen font-serif">
+      <body className="min-h-screen font-sans">
         <div className="mx-auto max-w-5xl px-6 py-8">
           <header className="mb-12 flex items-baseline justify-between">
             <a
               href="/"
-              className="text-2xl font-semibold tracking-tight no-underline text-ink"
+              className="text-2xl font-bold tracking-tight no-underline text-ink"
             >
-              CreatorOS<span className="text-accent">·</span>AI
+              Reel<span className="text-accent">.</span>
             </a>
             <nav className="flex items-baseline gap-6 text-sm">
               {user ? (
                 <>
-                  <a href="/dashboard">Dashboard</a>
                   <a href="/generate">Generate</a>
-                  <a href="/style">Style</a>
-                  <a href="/billing">Billing</a>
-                  {admin && <a href="/admin" className="text-accent">Admin</a>}
+                  <a href="/library">Library</a>
+                  <a href="/character">Character</a>
                   <form action="/auth/signout" method="post">
-                    <button
-                      type="submit"
-                      className="font-sans text-xs text-ink/60 underline"
-                    >
+                    <button type="submit" className="text-xs text-muted underline">
                       Sign out
                     </button>
                   </form>
                 </>
               ) : (
-                <>
-                  <a href="/audit">Free style audit</a>
-                  <a href="/login">Sign in</a>
-                </>
+                <a href="/login">Sign in</a>
               )}
             </nav>
           </header>
           <main>{children}</main>
-          <footer className="mt-24 border-t border-ink/10 pt-6 text-xs text-ink/60">
-            CreatorOS AI · v0.1 · One source → twenty platform-ready assets, in
-            your voice.
+          <footer className="mt-24 border-t border-ink/10 pt-6 text-xs text-muted">
+            Reel · v0.1 · One topic in. One comedy clip out. ~3 minutes.
           </footer>
         </div>
       </body>

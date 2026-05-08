@@ -1,81 +1,60 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/auth";
-import {
-  getCurrentCreator,
-  getLatestVoiceProfile,
-  saveGeneration,
-  saveSourceContent,
-} from "@/lib/db";
-import { generateBundle } from "@/lib/prompts/generate";
-import { reviewAsset } from "@/lib/prompts/qa";
-import { VoiceProfileSchema } from "@/lib/types";
+import { createClip, getCharacter } from "@/lib/db";
+import { startClipPipeline } from "@/lib/orchestrator";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
   try {
     const user = await requireUser();
-    const { source, topic, kind } = (await req.json()) as {
-      source: string;
+    const body = (await req.json()) as {
+      character_id?: string;
       topic?: string;
-      kind?: string;
     };
 
-    if (!source || source.trim().length < 100) {
+    const topic = (body.topic ?? "").trim();
+    if (topic.length < 3) {
       return NextResponse.json(
-        { error: "Source content too short (minimum 100 chars)" },
+        { error: "Topic too short" },
+        { status: 400 },
+      );
+    }
+    if (!body.character_id) {
+      return NextResponse.json(
+        { error: "character_id required" },
         { status: 400 },
       );
     }
 
-    const creator = await getCurrentCreator(user.id);
-    if (!creator) {
-      return NextResponse.json({ error: "Creator not found" }, { status: 404 });
-    }
-    const voiceRow = await getLatestVoiceProfile(creator.id);
-    if (!voiceRow) {
+    const character = await getCharacter(body.character_id, user.id);
+    if (!character) {
       return NextResponse.json(
-        { error: "No style profile — complete onboarding first" },
-        { status: 400 },
+        { error: "Character not found" },
+        { status: 404 },
       );
     }
-    const voiceProfile = VoiceProfileSchema.parse(voiceRow.profile);
 
-    const sourceRow = await saveSourceContent(
-      creator.id,
-      source,
-      kind ?? "transcript",
-    );
-
-    const bundle = await generateBundle({
-      voiceProfile,
-      source,
+    // Create the clip row first so the user can poll it immediately
+    // even if the sync portion of the pipeline takes ~30 seconds.
+    const clip = await createClip({
+      userId: user.id,
+      characterId: character.id,
       topic,
     });
 
-    // QA every asset in parallel — they share the cached Voice Profile prefix.
-    const scored = await Promise.all(
-      bundle.assets.map(async (asset) => ({
-        ...asset,
-        qa: await reviewAsset({ voiceProfile, asset }),
-      })),
-    );
+    // Run script + voice + Hedra-kickoff inline. Total ~30 seconds.
+    // (We could push this to a background queue, but Railway runs Next
+    // as a long-lived Node process — it's fine to await.)
+    await startClipPipeline({ clipId: clip.id, userId: user.id });
 
-    const generation = await saveGeneration({
-      creatorId: creator.id,
-      sourceId: sourceRow.id,
-      voiceProfileId: voiceRow.id,
-      assets: scored,
-    });
-
-    return NextResponse.json({
-      generation_id: generation.id,
-      assets: scored,
-    });
+    return NextResponse.json({ clip_id: clip.id });
   } catch (e) {
     if (e instanceof Response) return e;
-    const message = e instanceof Error ? e.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Unknown error" },
+      { status: 500 },
+    );
   }
 }
