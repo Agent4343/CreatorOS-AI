@@ -117,14 +117,24 @@ export default function OnboardingPage() {
         ))}
       </section>
 
+      <ImportPanel
+        onImport={(pieces) => {
+          const blocks = pieces
+            .map((p) => (p.title ? `# ${p.title}\n\n${p.body}` : p.body))
+            .join("\n\n---\n\n");
+          setCorpus((prev) => (prev.trim() ? prev + "\n\n---\n\n" + blocks : blocks));
+        }}
+      />
+
       <section className="space-y-3">
         <h2 className="font-sans text-sm font-semibold uppercase tracking-wider text-ink/60">
           Source corpus ({corpusPieces.length} pieces)
         </h2>
         <p className="text-sm text-ink/70">
-          Paste 30+ pieces of your published work. Separate each piece with a
-          line containing only <code className="font-mono">---</code>. Long-form
-          essays, transcripts, threads — all welcome.
+          Paste 30+ pieces of your published work, or import them above.
+          Separate each piece with a line containing only{" "}
+          <code className="font-mono">---</code>. Long-form essays, transcripts,
+          threads — all welcome.
         </p>
         <textarea
           className="w-full rounded-md border border-ink/20 bg-white/60 p-3 font-mono text-sm"
@@ -173,5 +183,133 @@ function Field({
         placeholder={placeholder}
       />
     </div>
+  );
+}
+
+type ScrapedPiece = { title: string; body: string; url?: string };
+
+function ImportPanel({
+  onImport,
+}: {
+  onImport: (pieces: ScrapedPiece[]) => void;
+}) {
+  const [mode, setMode] = useState<"feed" | "urls">("feed");
+  const [feedUrl, setFeedUrl] = useState("");
+  const [urlsText, setUrlsText] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
+
+  async function run() {
+    setLoading(true);
+    setError(null);
+    setInfo(null);
+    try {
+      const body =
+        mode === "feed"
+          ? { mode: "feed", url: feedUrl.trim() }
+          : {
+              mode: "urls",
+              urls: urlsText
+                .split(/\n+/)
+                .map((s) => s.trim())
+                .filter(Boolean),
+            };
+      const res = await fetch("/api/scrape", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Scrape failed");
+      if (data.pieces.length === 0) {
+        setError(
+          `Fetched ${data.total_fetched}, but every piece was under 200 chars. Try a different feed.`,
+        );
+      } else {
+        onImport(data.pieces as ScrapedPiece[]);
+        setInfo(
+          `Imported ${data.kept}/${data.total_fetched} pieces${data.dropped_short ? ` (${data.dropped_short} too short)` : ""}.`,
+        );
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="rounded-lg border border-ink/15 bg-white/40 p-4 space-y-3">
+      <div className="flex items-baseline justify-between">
+        <h2 className="font-sans text-sm font-semibold uppercase tracking-wider text-ink/60">
+          Import from URL
+        </h2>
+        <div className="flex gap-2 text-xs">
+          <button
+            type="button"
+            onClick={() => setMode("feed")}
+            className={
+              "rounded-md px-2 py-1 " +
+              (mode === "feed" ? "bg-ink text-cream" : "border border-ink/20")
+            }
+          >
+            RSS / Atom feed
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("urls")}
+            className={
+              "rounded-md px-2 py-1 " +
+              (mode === "urls" ? "bg-ink text-cream" : "border border-ink/20")
+            }
+          >
+            URL list
+          </button>
+        </div>
+      </div>
+
+      {mode === "feed" ? (
+        <>
+          <p className="text-xs text-ink/70">
+            Paste a Substack, blog, or podcast RSS feed URL. We'll fetch every
+            item.
+          </p>
+          <input
+            type="url"
+            value={feedUrl}
+            onChange={(e) => setFeedUrl(e.target.value)}
+            placeholder="https://yoursubstack.substack.com/feed"
+            className="w-full rounded-md border border-ink/20 bg-white/60 p-2 font-sans text-sm"
+          />
+        </>
+      ) : (
+        <>
+          <p className="text-xs text-ink/70">
+            One URL per line. We'll fetch each page and extract the main text.
+          </p>
+          <textarea
+            rows={6}
+            value={urlsText}
+            onChange={(e) => setUrlsText(e.target.value)}
+            placeholder="https://example.com/post-1&#10;https://example.com/post-2"
+            className="w-full rounded-md border border-ink/20 bg-white/60 p-2 font-mono text-xs"
+          />
+        </>
+      )}
+
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={run}
+          disabled={loading || (mode === "feed" ? !feedUrl.trim() : !urlsText.trim())}
+          className="rounded-md border border-ink/30 px-4 py-2 font-sans text-xs font-medium text-ink disabled:opacity-50"
+        >
+          {loading ? "Importing..." : "Import → append to corpus"}
+        </button>
+        {info && <span className="text-xs text-ink/70">{info}</span>}
+        {error && <span className="text-xs text-accent">{error}</span>}
+      </div>
+    </section>
   );
 }
