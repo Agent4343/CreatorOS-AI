@@ -14,6 +14,7 @@ const API_PROTECTED_PREFIXES = [
   "/api/qa",
   "/api/upload",
   "/api/export",
+  "/api/transcribe",
   "/api/stripe/checkout",
 ];
 

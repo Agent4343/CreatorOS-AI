@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   QA_DIMENSIONS,
   QA_DIMENSION_LABELS,
@@ -14,6 +14,37 @@ export default function GeneratePage() {
   const [error, setError] = useState<string | null>(null);
   const [generationId, setGenerationId] = useState<string | null>(null);
   const [assets, setAssets] = useState<ScoredAsset[]>([]);
+
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [transcribing, setTranscribing] = useState(false);
+  const [transcribeError, setTranscribeError] = useState<string | null>(null);
+  const [transcribePrompt, setTranscribePrompt] = useState("");
+
+  async function transcribe() {
+    setTranscribeError(null);
+    const file = fileRef.current?.files?.[0];
+    if (!file) {
+      setTranscribeError("Pick an audio or video file first.");
+      return;
+    }
+    setTranscribing(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      if (transcribePrompt.trim()) fd.append("prompt", transcribePrompt.trim());
+      const res = await fetch("/api/transcribe", {
+        method: "POST",
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Transcription failed");
+      setSource((prev) => (prev ? prev + "\n\n" + data.transcript : data.transcript));
+    } catch (e) {
+      setTranscribeError(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setTranscribing(false);
+    }
+  }
 
   async function generate() {
     setError(null);
@@ -51,6 +82,43 @@ export default function GeneratePage() {
           ~20 assets in 60–90 seconds, scored against your Voice Profile.
         </p>
       </div>
+
+      <section className="rounded-lg border border-ink/15 bg-white/40 p-4 space-y-3">
+        <div className="flex items-baseline justify-between">
+          <h2 className="font-sans text-xs font-semibold uppercase tracking-wider text-ink/60">
+            Transcribe audio or video
+          </h2>
+          <span className="font-mono text-[10px] text-ink/50">
+            Whisper · ≤25 MB · mp3 / m4a / wav / mp4 / webm
+          </span>
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="audio/*,video/*"
+          className="block w-full font-sans text-xs text-ink/80 file:mr-3 file:rounded-md file:border-0 file:bg-ink file:px-3 file:py-1.5 file:text-cream"
+        />
+        <input
+          type="text"
+          value={transcribePrompt}
+          onChange={(e) => setTranscribePrompt(e.target.value)}
+          placeholder="Optional: names / jargon / acronyms to help Whisper (e.g. 'Stripe, ARR, Patrick Collison')"
+          className="w-full rounded-md border border-ink/20 bg-white/60 p-2 font-sans text-xs"
+        />
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={transcribe}
+            disabled={transcribing}
+            className="rounded-md border border-ink/30 px-4 py-2 font-sans text-xs font-medium text-ink disabled:opacity-50"
+          >
+            {transcribing ? "Transcribing..." : "Transcribe → fill source"}
+          </button>
+          {transcribeError && (
+            <span className="text-xs text-accent">{transcribeError}</span>
+          )}
+        </div>
+      </section>
 
       <section className="space-y-3">
         <label className="block text-sm font-medium">Source content</label>
