@@ -48,13 +48,16 @@ export default function AuditPage() {
           Free writing-style audit
         </h1>
         <p className="mt-2 max-w-2xl text-ink/80">
-          Paste 3–10 of your recent posts. We'll score them against five
-          dimensions — AI-tell density, specificity, hook strength, format
-          fitness, original style signal — and send back the three
-          highest-leverage edits with concrete before/after examples.
+          Curious how your writing reads? Paste 3–10 of your recent posts and
+          we'll tell you, in plain English, what you do well and the three
+          highest-leverage things to change. Concrete before/after examples,
+          not generic advice.
         </p>
         <p className="mt-2 text-xs text-ink/60">
-          No signup. Same scorecard we use inside CreatorOS. Takes about a minute.
+          No signup. ~1 minute. We score against five things: how often you
+          slip into AI-sounding language, how specific your writing is, how
+          strong your opening lines are, whether your formatting fits the
+          platform, and how recognisable your style is.
         </p>
       </div>
 
