@@ -1,7 +1,12 @@
 import { client, MODEL } from "../anthropic";
 import {
+  AssetKind,
+  GeneratedAsset,
+  GeneratedAssetSchema,
   GenerationBundle,
   GenerationBundleSchema,
+  Platform,
+  QAScorecard,
   VoiceProfile,
 } from "../types";
 
@@ -98,4 +103,77 @@ export async function generateBundle(args: {
 
   const parsed = JSON.parse(text.text);
   return GenerationBundleSchema.parse(parsed);
+}
+
+const SINGLE_ASSET_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    kind: { type: "string", enum: BUNDLE_JSON_SCHEMA.properties.assets.items.properties.kind.enum },
+    platform: { type: "string", enum: BUNDLE_JSON_SCHEMA.properties.assets.items.properties.platform.enum },
+    title: { type: "string" },
+    body: { type: "string" },
+  },
+  required: ["kind", "platform", "title", "body"],
+  additionalProperties: false,
+};
+
+/**
+ * Regenerate a single asset of a given kind/platform. Used for the
+ * per-asset "regenerate" button — cheaper than re-running the whole
+ * bundle, and lets the creator pass a feedback hint ("shorter",
+ * "punchier hook", "drop the third tweet") that steers the rewrite.
+ */
+export async function regenerateAsset(args: {
+  voiceProfile: VoiceProfile;
+  source: string;
+  kind: AssetKind;
+  platform: Platform;
+  previous?: GeneratedAsset;
+  qa?: QAScorecard;
+  feedback?: string;
+}): Promise<GeneratedAsset> {
+  const voiceText =
+    `# Voice Profile\n\n` + JSON.stringify(args.voiceProfile, null, 2);
+
+  const prevBlock = args.previous
+    ? `# Previous attempt (do NOT reproduce verbatim — rewrite)\n\nTitle: ${args.previous.title}\n\n${args.previous.body}\n`
+    : "";
+  const qaBlock = args.qa
+    ? `# QA scorecard for the previous attempt — fix every flag below\n\n` +
+      args.qa.flags
+        .map((f) => `- ${f.dimension}: ${f.issue} → ${f.suggestion}`)
+        .join("\n") +
+      `\n`
+    : "";
+  const feedbackBlock = args.feedback
+    ? `# Creator feedback\n\n${args.feedback}\n`
+    : "";
+
+  const userText = `# Source piece\n\n${args.source}\n\n${prevBlock}${qaBlock}${feedbackBlock}\n# Task\nProduce ONE asset of kind=${args.kind} for platform=${args.platform}. Return JSON only.`;
+
+  const response = await client().messages.create({
+    model: MODEL,
+    max_tokens: 8000,
+    thinking: { type: "adaptive" },
+    output_config: {
+      effort: "high",
+      format: { type: "json_schema", schema: SINGLE_ASSET_JSON_SCHEMA },
+    },
+    system: [
+      { type: "text", text: SYSTEM_PREFIX },
+      {
+        type: "text",
+        text: voiceText,
+        cache_control: { type: "ephemeral" },
+      },
+    ],
+    messages: [{ role: "user", content: userText }],
+  });
+
+  const text = response.content.find((b) => b.type === "text");
+  if (!text || text.type !== "text") {
+    throw new Error("No text block in regenerate response");
+  }
+  const parsed = JSON.parse(text.text);
+  return GeneratedAssetSchema.parse(parsed);
 }

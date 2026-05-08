@@ -168,7 +168,18 @@ export default function GeneratePage() {
           </div>
 
           {assets.map((asset, i) => (
-            <AssetCard key={i} asset={asset} />
+            <AssetCard
+              key={i}
+              asset={asset}
+              source={source}
+              onReplace={(next) => {
+                setAssets((cur) => {
+                  const copy = [...cur];
+                  copy[i] = next;
+                  return copy;
+                });
+              }}
+            />
           ))}
         </section>
       )}
@@ -176,8 +187,49 @@ export default function GeneratePage() {
   );
 }
 
-function AssetCard({ asset }: { asset: ScoredAsset }) {
+function AssetCard({
+  asset,
+  source,
+  onReplace,
+}: {
+  asset: ScoredAsset;
+  source: string;
+  onReplace: (next: ScoredAsset) => void;
+}) {
   const [open, setOpen] = useState(true);
+  const [feedback, setFeedback] = useState("");
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenError, setRegenError] = useState<string | null>(null);
+
+  async function regenerate() {
+    setRegenerating(true);
+    setRegenError(null);
+    try {
+      const res = await fetch("/api/regenerate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source,
+          kind: asset.kind,
+          platform: asset.platform,
+          previous: { kind: asset.kind, platform: asset.platform, title: asset.title, body: asset.body },
+          qa: asset.qa,
+          feedback: feedback.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Regenerate failed");
+      onReplace(data.asset);
+      setFeedback("");
+      setShowFeedback(false);
+    } catch (e) {
+      setRegenError(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
   return (
     <div
       className={
@@ -206,8 +258,53 @@ function AssetCard({ asset }: { asset: ScoredAsset }) {
           >
             copy
           </button>
+          <button
+            className="font-sans text-xs text-accent disabled:opacity-50"
+            onClick={() => setShowFeedback((s) => !s)}
+            disabled={regenerating}
+          >
+            regenerate
+          </button>
         </div>
       </div>
+
+      {showFeedback && (
+        <div className="mt-3 space-y-2 rounded-md border border-accent/30 bg-accent/5 p-3">
+          <label className="block text-xs font-sans uppercase tracking-wider text-ink/60">
+            What should change? (optional)
+          </label>
+          <input
+            type="text"
+            value={feedback}
+            onChange={(e) => setFeedback(e.target.value)}
+            placeholder='e.g. "punchier hook" or "drop the third tweet"'
+            className="w-full rounded-md border border-ink/20 bg-white/60 p-2 font-sans text-xs"
+          />
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={regenerate}
+              disabled={regenerating}
+              className="rounded-md bg-ink px-3 py-1.5 font-sans text-xs text-cream disabled:opacity-50"
+            >
+              {regenerating ? "Regenerating..." : "Regenerate this asset"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowFeedback(false);
+                setFeedback("");
+              }}
+              className="font-sans text-xs text-ink/60"
+            >
+              cancel
+            </button>
+            {regenError && (
+              <span className="text-xs text-accent">{regenError}</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {open && (
         <div className="mt-3 space-y-3">

@@ -23,10 +23,10 @@ export default function Home() {
             Build my voice profile
           </a>
           <a
-            href="/dashboard"
+            href="/audit"
             className="rounded-md border border-ink/20 px-5 py-3 font-sans text-sm font-medium text-ink no-underline"
           >
-            See dashboard
+            Free voice audit (no signup)
           </a>
         </div>
       </section>

@@ -11,6 +11,7 @@ const PROTECTED_PREFIXES = [
 const API_PROTECTED_PREFIXES = [
   "/api/voice/build",
   "/api/generate",
+  "/api/regenerate",
   "/api/qa",
   "/api/upload",
   "/api/export",

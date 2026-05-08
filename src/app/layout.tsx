@@ -53,7 +53,10 @@ export default async function RootLayout({
                   </form>
                 </>
               ) : (
-                <a href="/login">Sign in</a>
+                <>
+                  <a href="/audit">Free voice audit</a>
+                  <a href="/login">Sign in</a>
+                </>
               )}
             </nav>
           </header>
