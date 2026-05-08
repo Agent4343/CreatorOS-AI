@@ -19,9 +19,15 @@ export async function buildVoiceProfile(args: {
   intake: Record<string, string>;
   corpus: string[];
 }): Promise<VoiceProfile> {
-  const intakeBlock = Object.entries(args.intake)
-    .map(([q, a]) => `Q: ${q}\nA: ${a}`)
-    .join("\n\n");
+  const filled = Object.entries(args.intake).filter(([, a]) => a && a.trim());
+
+  const intakeBlock =
+    filled.length > 0
+      ? filled.map(([q, a]) => `Q: ${q}\nA: ${a.trim()}`).join("\n\n")
+      : "(The creator skipped the intake. Infer everything from the corpus. " +
+        "For audience.who, audience.pains, vocabulary.avoided_phrases, and " +
+        "the cta_library, make your best inference but mark uncertainty by " +
+        "preferring shorter / more conservative entries.)";
 
   const corpusBlock = args.corpus
     .map((piece, i) => `--- Piece ${i + 1} ---\n${piece}`)
