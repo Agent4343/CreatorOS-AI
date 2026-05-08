@@ -7,14 +7,15 @@ type CharacterSummary = {
   id: string;
   name: string;
   one_liner: string;
-  reference_image_url: string;
+  aspect_ratio: string;
+  target_duration_min: number;
 };
 
 const STATUS_LABEL: Record<ClipStatus, string> = {
   queued: "Queued…",
   scripting: "Writing the script…",
   voicing: "Recording the voice…",
-  rendering: "Rendering the video (~3 min)…",
+  rendering: "Rendering the video (long-form takes 5-15 min)…",
   done: "Done",
   failed: "Failed",
 };
@@ -39,6 +40,8 @@ export default function GenerateForm({
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
+
+  const selected = characters.find((c) => c.id === characterId);
 
   async function start() {
     if (!characterId || topic.trim().length < 3) return;
@@ -84,14 +87,16 @@ export default function GenerateForm({
       } catch {
         // transient — keep polling
       }
-    }, 5000);
+    }, 15000);
   }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Generate a clip</h1>
-        <p className="mt-2 text-muted">One topic in. One comedy clip out. ~3 minutes.</p>
+        <h1 className="text-3xl font-bold tracking-tight">Generate a video</h1>
+        <p className="mt-2 text-muted">
+          One topic in. One long-form comedy video out. Total wall-clock 5–15 min.
+        </p>
       </div>
 
       <section>
@@ -103,20 +108,16 @@ export default function GenerateForm({
               key={c.id}
               onClick={() => setCharacterId(c.id)}
               className={
-                "flex gap-3 rounded-md border p-3 text-left " +
+                "rounded-md border p-3 text-left " +
                 (characterId === c.id
                   ? "border-accent bg-white"
                   : "border-ink/15 bg-white hover:border-ink/30")
               }
             >
-              <img
-                src={c.reference_image_url}
-                alt={c.name}
-                className="h-12 w-12 rounded-md object-cover"
-              />
-              <div>
-                <div className="text-sm font-bold">{c.name}</div>
-                <div className="text-xs text-muted">{c.one_liner}</div>
+              <div className="text-sm font-bold">{c.name}</div>
+              <div className="text-xs text-muted">{c.one_liner}</div>
+              <div className="mt-1 font-mono text-[10px] text-muted">
+                {c.aspect_ratio} · {c.target_duration_min} min target
               </div>
             </button>
           ))}
@@ -129,9 +130,14 @@ export default function GenerateForm({
           className="mt-1 w-full rounded-md border border-ink/20 bg-white p-3 text-sm"
           value={topic}
           onChange={(e) => setTopic(e.target.value)}
-          placeholder="e.g. the way LinkedIn talks about Mondays"
-          disabled={loading || (status !== null && status !== "failed")}
+          placeholder="e.g. 'why every founder pretends to like their investors'"
+          disabled={loading || (status !== null && status !== "failed" && status !== "done")}
         />
+        {selected && (
+          <p className="mt-1 text-xs text-muted">
+            Will produce a ~{selected.target_duration_min}-minute video starring {selected.name}.
+          </p>
+        )}
         <button
           onClick={start}
           disabled={
@@ -142,7 +148,7 @@ export default function GenerateForm({
           }
           className="mt-3 rounded-md bg-ink px-5 py-3 text-sm font-medium text-bg disabled:opacity-50"
         >
-          {loading ? "Starting…" : "Generate clip"}
+          {loading ? "Starting…" : "Generate video"}
         </button>
       </section>
 
@@ -162,15 +168,15 @@ export default function GenerateForm({
           <video
             src={videoUrl}
             controls
-            className="mx-auto max-h-[600px] w-auto rounded-md"
+            className="mx-auto w-full max-w-3xl rounded-md"
           />
-          <div className="mt-3 flex gap-3">
+          <div className="mt-3 flex flex-wrap gap-3">
             <a
               href={videoUrl}
               download
               className="rounded-md bg-ink px-4 py-2 text-sm text-bg no-underline"
             >
-              Download
+              Download MP4
             </a>
             <a
               href="/library"
@@ -190,6 +196,9 @@ export default function GenerateForm({
               Generate another
             </button>
           </div>
+          <p className="mt-3 text-xs text-muted">
+            Upload to YouTube / Facebook / TikTok manually for now. Auto-post is Phase 2.
+          </p>
         </section>
       )}
 

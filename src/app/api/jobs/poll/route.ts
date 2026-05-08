@@ -6,13 +6,11 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 /**
- * Hit by Railway's cron (or any external cron) every ~30 seconds. Walks
- * every clip whose status is 'rendering' and asks Hedra whether it's
- * done; if so, mirrors the video to our storage and flips the status.
+ * Cron-driven poll. Hit by Railway cron every 30-60 seconds. Walks every
+ * clip with status='rendering' and asks the video provider whether it's
+ * done; if so, mirrors the video to our storage and flips status='done'.
  *
- * Uses a shared secret (CRON_SECRET) for auth so it's not exposed
- * publicly. Set it in env, then have Railway send it as a Bearer token
- * on the cron call.
+ * Uses CRON_SECRET as a bearer token so this isn't accessible publicly.
  */
 export async function POST(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
@@ -26,7 +24,7 @@ export async function POST(req: NextRequest) {
 
   for (const clip of inFlight) {
     try {
-      await pollClip({ id: clip.id, hedra_job_id: clip.hedra_job_id });
+      await pollClip({ id: clip.id, provider_job_id: clip.provider_job_id });
       results.push({ id: clip.id, ok: true });
     } catch (e) {
       results.push({
@@ -37,8 +35,5 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({
-    polled: results.length,
-    results,
-  });
+  return NextResponse.json({ polled: results.length, results });
 }

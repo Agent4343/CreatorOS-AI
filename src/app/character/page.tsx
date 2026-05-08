@@ -1,9 +1,7 @@
-import { requireUser } from "@/lib/auth";
 import { listCharacters } from "@/lib/db";
 
 export default async function CharacterPage() {
-  const user = await requireUser();
-  const characters = await listCharacters(user.id);
+  const characters = await listCharacters();
 
   return (
     <div className="space-y-6">
@@ -35,20 +33,16 @@ export default async function CharacterPage() {
         {characters.map((c) => (
           <div
             key={c.id}
-            className="flex gap-4 rounded-lg border border-ink/15 bg-white p-4"
+            className="rounded-lg border border-ink/15 bg-white p-4"
           >
-            <img
-              src={c.reference_image_url}
-              alt={c.name}
-              className="h-24 w-24 rounded-md object-cover"
-            />
-            <div className="min-w-0">
-              <h2 className="text-lg font-bold">{c.name}</h2>
-              <p className="text-sm text-muted">{c.persona.one_liner}</p>
-              <p className="mt-2 text-xs font-mono text-muted">
-                {c.persona.delivery} · {c.aspect_ratio} · {c.target_duration_sec}s
-              </p>
-            </div>
+            <h2 className="text-lg font-bold">{c.name}</h2>
+            <p className="text-sm text-muted">{c.persona.one_liner}</p>
+            <p className="mt-2 font-mono text-xs text-muted">
+              {c.persona.delivery} · {c.aspect_ratio} · {Math.round(c.target_duration_sec / 60)} min
+            </p>
+            <p className="mt-2 break-all font-mono text-[10px] text-muted">
+              {c.reference_image_url}
+            </p>
           </div>
         ))}
       </div>

@@ -21,14 +21,14 @@ export const CharacterSchema = z.object({
   id: z.string().uuid(),
   user_id: z.string().uuid(),
   name: z.string().min(1).max(60),
-  reference_image_url: z.string().url(),
+  reference_image_url: z.string(),
   voice_id: z.string(),
   voice_provider: z.literal("elevenlabs"),
   voice_stability: z.number().min(0).max(1).default(0.5),
   voice_similarity_boost: z.number().min(0).max(1).default(0.75),
   persona: PersonaSchema,
-  aspect_ratio: z.enum(ASPECT_RATIOS).default("9:16"),
-  target_duration_sec: z.number().int().min(10).max(60).default(30),
+  aspect_ratio: z.enum(ASPECT_RATIOS).default("16:9"),
+  target_duration_sec: z.number().int().min(60).max(1200).default(600),
   created_at: z.string(),
 });
 export type Character = z.infer<typeof CharacterSchema>;
@@ -43,11 +43,18 @@ export const CLIP_STATUSES = [
 ] as const;
 export type ClipStatus = (typeof CLIP_STATUSES)[number];
 
-export const ScriptSchema = z.object({
-  hook: z.string(),
+export const ScriptSegmentSchema = z.object({
+  heading: z.string(),
   body: z.string(),
-  closer: z.string(),
-  estimated_seconds: z.number().int().min(8).max(60),
+});
+export type ScriptSegment = z.infer<typeof ScriptSegmentSchema>;
+
+export const ScriptSchema = z.object({
+  title: z.string(),
+  hook: z.string(),
+  segments: z.array(ScriptSegmentSchema).min(1).max(8),
+  outro: z.string(),
+  estimated_seconds: z.number().int().min(60).max(1500),
   notes: z.string().optional(),
 });
 export type Script = z.infer<typeof ScriptSchema>;
@@ -61,7 +68,7 @@ export const ClipSchema = z.object({
   script: ScriptSchema.nullable(),
   audio_url: z.string().url().nullable(),
   video_url: z.string().url().nullable(),
-  hedra_job_id: z.string().nullable(),
+  provider_job_id: z.string().nullable(),
   error: z.string().nullable(),
   created_at: z.string(),
   completed_at: z.string().nullable(),

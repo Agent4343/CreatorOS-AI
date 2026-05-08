@@ -55,11 +55,15 @@ async function main() {
       const script = await generateScript({
         persona: FIXTURE_PERSONA,
         topic,
-        targetDurationSec: 30,
+        targetDurationSec: 8 * 60, // 8-min target
       });
       const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+      const minutes = (script.estimated_seconds / 60).toFixed(1);
       console.log("─".repeat(70));
-      console.log(`Topic #${i + 1}: ${topic}    [${elapsed}s · est ${script.estimated_seconds}s]`);
+      console.log(
+        `Topic #${i + 1}: ${topic}    [${elapsed}s gen · est ${minutes} min · ${script.segments.length} segments]`,
+      );
+      console.log(`Title: ${script.title}`);
       console.log("─".repeat(70));
       console.log(scriptToVoiceText(script));
       if (script.notes) console.log(`\n[notes] ${script.notes}`);

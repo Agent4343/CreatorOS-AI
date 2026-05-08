@@ -1,6 +1,6 @@
 import { generateScript, scriptToVoiceText } from "./prompts/script";
 import { synthesizeSpeech } from "./providers/elevenlabs";
-import { startRender, uploadAsset, getJob } from "./providers/hedra";
+import { videoProvider } from "./providers/video";
 import { getCharacter, getClip, updateClip } from "./db";
 import { supabaseService } from "./supabase/server";
 import { CharacterSchema } from "./types";
@@ -8,20 +8,15 @@ import { CharacterSchema } from "./types";
 const STORAGE_BUCKET = "clip-assets";
 
 /**
- * Run the synchronous portion of the pipeline for a clip:
- *   script → voice → upload assets → kick off Hedra render.
- * Persists status to the DB at each step. Returns when Hedra has been
- * told to start; the rendering step is async and finishes via
- * /api/jobs/poll or /api/webhooks/hedra.
+ * Sync portion of the pipeline:
+ *   script → voice → upload audio to Storage → kick off video render.
+ * The video render itself is async and finishes via /api/jobs/poll.
  */
-export async function startClipPipeline(args: {
-  clipId: string;
-  userId: string;
-}): Promise<void> {
-  const clip = await getClip(args.clipId, args.userId);
+export async function startClipPipeline(args: { clipId: string }): Promise<void> {
+  const clip = await getClip(args.clipId);
   if (!clip) throw new Error("Clip not found");
 
-  const character = await getCharacter(clip.character_id, args.userId);
+  const character = await getCharacter(clip.character_id);
   if (!character) throw new Error("Character not found");
   const c = CharacterSchema.parse(character);
 
@@ -35,7 +30,7 @@ export async function startClipPipeline(args: {
     });
     await updateClip(clip.id, { script });
 
-    // 2. Voice synth
+    // 2. Voice
     await updateClip(clip.id, { status: "voicing" });
     const voiceText = scriptToVoiceText(script);
     const audioBytes = await synthesizeSpeech({
@@ -45,8 +40,8 @@ export async function startClipPipeline(args: {
       similarityBoost: c.voice_similarity_boost,
     });
 
-    // 3. Persist audio to Supabase Storage so we have it even if Hedra
-    //    drops it later. Returns a public URL we hand to the user.
+    // 3. Persist audio to Supabase Storage and get a public URL.
+    //    HeyGen needs to fetch this URL directly.
     const audioUrl = await putBytes({
       path: `clips/${clip.id}/voice.mp3`,
       bytes: Buffer.from(audioBytes),
@@ -54,43 +49,16 @@ export async function startClipPipeline(args: {
     });
     await updateClip(clip.id, { audio_url: audioUrl });
 
-    // 4. Hedra needs the image and audio as uploaded assets, addressed
-    //    by their internal IDs. Pull the image bytes from the
-    //    character's reference_image_url; reuse the audio bytes.
-    const imageRes = await fetch(c.reference_image_url);
-    if (!imageRes.ok) {
-      throw new Error(
-        `Failed to fetch reference image: ${imageRes.status}`,
-      );
-    }
-    const imageBytes = await imageRes.arrayBuffer();
-    const imageContentType =
-      imageRes.headers.get("content-type") ?? "image/png";
-
-    const [imageAsset, audioAsset] = await Promise.all([
-      uploadAsset({
-        bytes: imageBytes,
-        filename: `character-${c.id}.png`,
-        contentType: imageContentType,
-        kind: "image",
-      }),
-      uploadAsset({
-        bytes: audioBytes,
-        filename: `clip-${clip.id}.mp3`,
-        contentType: "audio/mpeg",
-        kind: "audio",
-      }),
-    ]);
-
-    // 5. Kick off the render. Async — completion handled elsewhere.
+    // 4. Kick off the video render via whichever provider is configured.
     await updateClip(clip.id, { status: "rendering" });
-    const job = await startRender({
-      imageAssetId: imageAsset.id,
-      audioAssetId: audioAsset.id,
+    const provider = videoProvider();
+    const job = await provider.startRender({
+      imageUrl: c.reference_image_url,
+      audioUrl,
       aspectRatio: c.aspect_ratio,
-      promptText: `${c.persona.delivery} delivery, ${c.persona.one_liner}`,
+      scriptText: voiceText,
     });
-    await updateClip(clip.id, { hedra_job_id: job.id });
+    await updateClip(clip.id, { provider_job_id: job.id });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Unknown error";
     await updateClip(clip.id, { status: "failed", error: message });
@@ -99,19 +67,20 @@ export async function startClipPipeline(args: {
 }
 
 /**
- * Check Hedra for the latest status of an in-flight clip and update the
- * DB accordingly. Called by /api/jobs/poll on a schedule.
+ * Check the video provider for the latest status of one in-flight clip.
+ * Called by /api/jobs/poll on a schedule.
  */
 export async function pollClip(clip: {
   id: string;
-  hedra_job_id: string | null;
+  provider_job_id: string | null;
 }): Promise<void> {
-  if (!clip.hedra_job_id) return;
-  const job = await getJob(clip.hedra_job_id);
+  if (!clip.provider_job_id) return;
+  const provider = videoProvider();
+  const job = await provider.getJob(clip.provider_job_id);
 
   if (job.status === "complete" && job.video_url) {
-    // Mirror Hedra's video into our own storage so the URL is stable
-    // and not subject to provider-side expiry / rotation.
+    // Mirror the provider's video into our own storage so the URL is
+    // stable and not subject to provider-side expiry / rotation.
     const res = await fetch(job.video_url);
     if (!res.ok) {
       await updateClip(clip.id, {
@@ -137,11 +106,9 @@ export async function pollClip(clip: {
   if (job.status === "failed") {
     await updateClip(clip.id, {
       status: "failed",
-      error: job.error ?? "Hedra render failed",
+      error: job.error ?? "Video render failed",
     });
-    return;
   }
-
   // Otherwise still rendering; nothing to do.
 }
 

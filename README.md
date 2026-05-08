@@ -1,55 +1,59 @@
-# Reel — AI comedy clip factory
+# Reel — single-user, long-form AI video factory
 
-**Working title.** Type a topic, get a 30-second comedy video starring your recurring AI character.
+**Working title.** Type a topic, get a 5–15 minute video starring your recurring AI character. Built for one creator. Ships videos to YouTube and Facebook.
 
 ---
 
 ## What it does
 
-1. **Set up a character once** — upload a reference image, pick a voice, write a persona ("snarky tech analyst", "tired millennial parent").
-2. **Type a topic** — *"the way LinkedIn talks about Mondays."*
-3. **Wait 3 minutes** — Claude writes the script, ElevenLabs voices it, Hedra renders the video.
-4. **Download & post** — vertical 9:16 MP4 ready for TikTok / Reels / Shorts.
+1. **Set up a character once** — paste a HeyGen Photo Avatar ID, pick an ElevenLabs voice, write a 100-word persona ("snarky tech analyst", "tired millennial parent").
+2. **Type a topic** — *"why every founder pretends to like their investors."*
+3. **Wait 5–15 minutes** — Claude writes the long-form script, ElevenLabs voices it, HeyGen renders the video.
+4. **Download & upload** — 16:9 horizontal MP4 ready for YouTube or Facebook.
 
-Same character every clip. Same voice. Different topic each time. ~$0.60 in API cost per clip; we charge $0.99–1.99.
+Same character every video. Different topic each time. ~$3–8 of API spend per 10-minute video.
 
-## What it doesn't do
+## Single-user
 
-- Not a video editor. Not an avatar marketplace.
-- Not deepfakes — characters are clearly fictional, not impersonations of real people.
-- No multi-character scenes (Phase 2).
-- No automated posting (Phase 2).
+No signup, no Stripe, no credits. Whole app is gated by an `APP_PASSWORD` env var. One password, one cookie, one user. Want to invite someone later? Re-enable the multi-tenant layer (the `user_id` columns are still there) and switch back to Supabase auth.
 
 ## Stack
 
-- **Next.js** (App Router) on Railway
-- **Supabase** — Postgres + auth + Storage for video files
-- **Anthropic Claude** — comedy script generation (Opus 4.7, adaptive thinking)
+- **Next.js** (App Router) on Railway — long-running Node, no serverless
+- **Supabase** — Postgres + Storage. No Supabase auth (we use a password gate).
+- **Anthropic Claude Opus 4.7** — long-form script generation, adaptive thinking, persona cached behind `cache_control`
 - **ElevenLabs** — voice synthesis (curated preset voices in Phase 1)
-- **Hedra** (Character-3) — talking-head video render
-- **Stripe** — credit-based billing
+- **HeyGen V2** — Photo Avatar talking-head video, supports long-form
+- Provider abstraction layer (`src/lib/providers/video.ts`) — swap HeyGen for Hedra (short-form ≤90s) or any future provider
 
-Three external providers, one DB, one frontend. Per BIBLE.md §15: every additional provider is engineering debt.
-
-## Architecture
+## Pipeline
 
 ```
-Topic ──▶ Claude (script) ──▶ ElevenLabs (voice) ──▶ Hedra (video) ──▶ Library
-  ~10s            ~$0.05           ~15s, ~$0.02         ~3min, ~$0.50
+Topic
+  ──▶ Claude        — script, ~30s, ~$0.10
+  ──▶ ElevenLabs    — voice, ~30s, ~$0.30
+  ──▶ HeyGen        — video, 5-15 min, ~$3-8
+  ──▶ Library
 ```
 
-The Hedra step is async. We persist `clips.status` and poll Hedra (or accept its webhook) until done. No Redis, no BullMQ — just a status field and the provider's own queue.
+The video render is async. We persist `provider_job_id`, and `/api/jobs/poll` (cron-driven) flips status to `done` when HeyGen reports completion.
 
 ## Roadmap
 
-- **Phase 0** (Weeks 1–3) — hand-validate that the comedy script generator hits ≥40% "would I watch this." No app code until then.
-- **Phase 1** (Weeks 4–10) — single character, single talking-head clips, credit-based billing, manual download-and-post.
-- **Phase 2** (Month 4+) — only after 50 paying users with >50% week-2 retention. Adds: custom voice cloning, captions, multi-character, direct-post to TikTok/Reels.
+- **Phase 0** (Weeks 1–2) — hand-validate the script generator. Run `npm run smoke:script`. Iterate the prompt until ≥40% of generated scripts pass "would I watch all the way through."
+- **Phase 1** (Weeks 3–6) — finished video pipeline. One character, one user, manual upload to YouTube / Facebook.
+- **Phase 2** (Month 3+) — only if Phase 1 outputs pass the bar. B-roll, captions, music, auto-upload.
+
+## Targets
+
+- **YouTube** (long-form 16:9, 3–20 min) — the primary distribution surface
+- **Facebook** (feed video 16:9) — secondary
+- **Not** TikTok / Reels / Shorts — those are vertical 9:16 ≤60s, a different product. Possible later.
 
 ## Prior project
 
-This repo previously held **CreatorOS AI**, a different product (long-form text → social posts). That work is preserved at `_archive/v1-creatoros-ai/` and in git history. The pivot to AI comedy video is a clean break — different problem, different stack, different audience.
+This repo previously held **CreatorOS AI** (long-form text → social posts) and then **Reel v1** (multi-user TikTok-style 30-second clips). Both are preserved at `_archive/v1-creatoros-ai/` and in git history. The current direction (single-user, long-form, YouTube/Facebook) is a clean break.
 
 ---
 
-Full strategy: [BIBLE.md](./BIBLE.md).
+Full strategy: [BIBLE.md](./BIBLE.md). Setup recipe: [SETUP.md](./SETUP.md).

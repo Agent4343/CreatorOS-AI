@@ -1,33 +1,54 @@
 import { client, MODEL } from "../anthropic";
 import { Persona, Script, ScriptSchema } from "../types";
 
-const SYSTEM = `You are a working comedy writer. Your job is to write a 30-second monologue, in character, that lands.
+const SYSTEM = `You are a comedy writer for an AI presenter who delivers long-form monologue videos to camera. Format is roughly 3-15 minutes. Think: Jon Stewart desk piece, John Mulaney special excerpt, John Oliver cold open. Single voice, the whole way.
 
-Your output is read aloud by an AI voice and rendered onto an AI character. So:
+Your output is read aloud verbatim and rendered as one continuous talking-head video. Constraints follow:
 
-- Write for the ear, not the page. Short sentences. Rhythm matters.
-- One specific premise per clip. Don't try to cover the topic — angle it.
-- The hook is the first 1-2 lines. If the hook doesn't earn the second sentence, the clip is dead. Hooks are: contrarian claims, hyper-specific observations, or pointed questions. Never "Hey guys" / "Today we're talking about" / "Have you ever wondered."
-- Beats > setups. A 30-second comedy clip has room for a hook, two or three beats, and a closer. Each beat should be its own laugh, not a step toward one final laugh.
+WRITE FOR THE EAR
+- Short sentences. Rhythmic.
+- Read everything you write out loud in your head before deciding it's done. If it doesn't trip naturally off the tongue, rewrite it.
+- No stage directions, no parentheticals, no "[laughs]". The voice is read literally.
+
+LONG-FORM STRUCTURE
+- One specific premise per video. Don't try to cover the topic; angle it.
+- HOOK (≈30 seconds) earns the next 9 minutes. First two sentences should make a stranger keep watching. Hook patterns that work: contrarian claim, hyper-specific observation, pointed question, "let me tell you about" with a specific name. Hook patterns that fail: "Hey guys", "today we're going to talk about", "have you ever wondered."
+- SEGMENTS (3-6 of them, ~60-120 seconds each). Each segment is its own bit, with its own setup → development → punch. The segments should escalate, not repeat. Use callbacks between segments — set something up in segment 1, return to it in segment 4.
+- OUTRO (≈30 seconds). Land the plane. A final image, a sharp callback, or a punchline. Never "thanks for watching", never "what do you think — let me know in the comments", never recap.
+
+VOICE
+- Stay in the persona. Use vocabulary_hits where natural. Avoid every entry in avoided_phrases. Match the delivery style.
 - Specificity wins. "Marketing teams" is dead. "The Series-B marketing manager who just discovered Notion" is alive.
-- Stay in character. Use the persona's vocabulary_hits where natural. Avoid every phrase in avoided_phrases. Match the delivery style exactly.
-- No fourth-wall breaks unless the persona's delivery calls for them.
-- No "in conclusion," no recap, no "what do you think?" CTAs. The closer is a punchline, an image, or a sharp landing — not a question to the audience.
+- Comedy is opinion, sharply held. Take a position the audience can disagree with — it's better than playing safe.
 
-Length: target the persona's target_duration_sec, ±5 seconds. ~150 words is roughly 30 seconds at conversational pace.
+LENGTH
+- Target the persona's target_duration_sec, ±60 seconds. Speaking rate is roughly 150 words per minute. A 10-minute video is ~1500 words.
+- Estimated_seconds in the response should be your honest estimate at ~150 wpm, not the target.
 
-Return JSON only.`;
+Return JSON only. The hook, each segment.body, and the outro are read verbatim — write actual sentences, not headlines.`;
 
 const SCRIPT_JSON_SCHEMA = {
   type: "object",
   properties: {
+    title: { type: "string" },
     hook: { type: "string" },
-    body: { type: "string" },
-    closer: { type: "string" },
+    segments: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          heading: { type: "string" },
+          body: { type: "string" },
+        },
+        required: ["heading", "body"],
+        additionalProperties: false,
+      },
+    },
+    outro: { type: "string" },
     estimated_seconds: { type: "integer" },
     notes: { type: "string" },
   },
-  required: ["hook", "body", "closer", "estimated_seconds"],
+  required: ["title", "hook", "segments", "outro", "estimated_seconds"],
   additionalProperties: false,
 };
 
@@ -42,18 +63,20 @@ export async function generateScript(args: {
     `# Character persona\n\n` + JSON.stringify(args.persona, null, 2);
 
   const prevBlock = args.previousScript
-    ? `\n\n# Previous attempt — do NOT reproduce; rewrite\n\nHook: ${args.previousScript.hook}\nBody: ${args.previousScript.body}\nCloser: ${args.previousScript.closer}\n`
+    ? `\n\n# Previous attempt — do NOT reproduce; rewrite\n\n${scriptToVoiceText(args.previousScript)}\n`
     : "";
 
   const feedbackBlock = args.feedback
     ? `\n\n# Creator feedback\n${args.feedback}\n`
     : "";
 
-  const userText = `# Topic\n\n${args.topic}\n\n# Target length\n${args.targetDurationSec} seconds (±5)${prevBlock}${feedbackBlock}\n\nWrite the script. JSON only.`;
+  const targetMin = Math.round(args.targetDurationSec / 60);
+
+  const userText = `# Topic\n\n${args.topic}\n\n# Target length\n${targetMin} minutes (~${Math.round(targetMin * 150)} words, ±10%)${prevBlock}${feedbackBlock}\n\nWrite the script. JSON only.`;
 
   const response = await client().messages.create({
     model: MODEL,
-    max_tokens: 4000,
+    max_tokens: 16000,
     thinking: { type: "adaptive" },
     output_config: {
       effort: "high",
@@ -78,9 +101,15 @@ export async function generateScript(args: {
   return ScriptSchema.parse(parsed);
 }
 
-/** Combine the three script parts into the single voice-script string. */
+/**
+ * Concatenate hook + segments + outro into the spoken script.
+ * Headings are NOT spoken — they're scaffolding for the writer.
+ */
 export function scriptToVoiceText(script: Script): string {
-  return [script.hook.trim(), script.body.trim(), script.closer.trim()]
-    .filter(Boolean)
-    .join("\n\n");
+  const parts: string[] = [script.hook.trim()];
+  for (const seg of script.segments) {
+    if (seg.body.trim()) parts.push(seg.body.trim());
+  }
+  if (script.outro.trim()) parts.push(script.outro.trim());
+  return parts.join("\n\n");
 }

@@ -1,139 +1,125 @@
-# Reel — Project Bible v1
+# Reel — Project Bible v2 (single-user, long-form)
 
-**An AI comedy video factory: type a topic, get a 30-second comedy video starring your recurring AI persona.**
+**An AI long-form video factory for one creator.** Type a topic, get a 5–15 minute video starring your recurring AI character — ready to upload to YouTube or Facebook.
 *Working title: "Reel" — to be renamed before launch.*
-*Version 1.0 · May 2026*
+*Version 2.0 · May 2026*
 
 ---
 
-## 0. What this is
+## 0. What changed from v1
 
-You set up a recurring AI character once — a name, a face, a voice, a comedy persona. After that, you type a one-line topic ("the way LinkedIn influencers talk about Mondays"), wait three minutes, and get back a 30-second vertical video of that character delivering a comedy bit on the topic. Ready to post to TikTok / Reels / Shorts.
+v1 was a multi-user SaaS pumping out 30-second TikTok-style comedy clips. v2 is a tool **for one creator** producing **long-form videos** for **YouTube + Facebook**. Everything follows from those two changes:
 
-Same character every video. Same voice. Same comedic POV. Different topic each time.
+- **Single user.** No signup, no Stripe, no credits, no per-user RLS. One `APP_PASSWORD` gate. ~30% less code.
+- **Long-form (16:9, 3–20 min).** Different video provider, different script structure, different UX. Hedra (≤90s talking-head) → **HeyGen** (long-form Photo Avatars).
+- **YouTube + Facebook are the targets.** No TikTok-specific tooling. No vertical defaults. Manual upload — automation is Phase 2.
 
 ---
 
 ## 1. Vision
 
-The lowest-friction path from "topic" to "posted comedy video." A creator goes from idea → published clip in under 5 minutes, without filming, scripting, editing, or animating anything themselves.
+The lowest-friction path from "topic" to "uploadable long-form video" — for one creator, building one channel, with one recurring AI persona.
 
-We are not building a video editor. We are not building an avatar marketplace. We are building **one button that produces a finished comedy clip**.
+The creator does taste (pick the topic, review, upload). The system does production (script, voice, render). Goal: a creator can publish a polished 10-minute video every day without filming, scripting, or editing themselves.
 
 ---
 
 ## 2. The problem
 
-Short-form comedy is the highest-engagement content on every short-form platform — and the hardest to produce at volume. To ship one good 30-second clip, a comedy creator currently needs:
+Long-form YouTube comedy is the highest-value short-form-adjacent format — better algorithm reach, better ad revenue per view, better audience retention than Shorts. It's also the hardest to produce. To ship one 10-minute video, a creator needs:
 
-- A premise / hook
-- A script that lands
-- A camera, lights, mic, and themselves on-screen
-- Editing software
-- ~3–6 hours from idea to published
+- A premise sharp enough to hold attention for 10 minutes
+- A 1500-word script that lands consistently
+- Camera, lighting, mic, themselves on-screen
+- Editing (cuts, b-roll, music, captions) — or it looks amateur
+- Realistically, 8–20 hours per video
 
-Posting at the cadence the algorithms reward (5–10 clips/week) means either burning out or hiring a team.
+Most long-form creators ship **once a week, max**. The algorithm rewards 3–5 uploads/week. The math doesn't work without a team or a tool.
 
-What an AI version unlocks: **same persona, infinite topics, finished clips in minutes, zero on-screen presence required.** The bottleneck moves from production to taste — the creator picks topics, reviews, and ships. Everything else is automated.
-
----
-
-## 3. The honest moat
-
-Talking-head AI video tooling is commoditizing fast. Hedra, HeyGen, Captions, and Synthesia all have APIs. Voice (ElevenLabs) is mature. Script generation (Claude / GPT) is generic.
-
-The defensible parts, ranked:
-
-1. **Comedy quality of the script generator.** Most AI script tools produce LinkedIn-grade slop. Comedy is hard for LLMs because it requires specific hook structures, beats, callbacks, and a willingness to be sharp. A prompt + persona system that consistently produces *funny* — not just "comedy-shaped" — is the actual product.
-2. **Persona consistency.** Same face, same voice, same point-of-view across hundreds of clips. The audience identifies with a character, not a creator.
-3. **Speed of the loop.** "Topic → published" in under 5 minutes wins on every dimension that matters: experimentation rate, daily posting cadence, willingness to throw away mediocre clips.
-
-What is **not** a moat:
-- The video model (we use someone else's)
-- The voice (we use ElevenLabs)
-- The general LLM (we use Claude)
-- A pretty UI
+What the AI version unlocks: **one persona, infinite topics, finished videos in 15 minutes.** Move the bottleneck from production to taste — the creator picks topics, reviews, and uploads. Everything else is automated.
 
 ---
 
-## 4. Initial niche — the recurring-character creator
+## 3. The honest moat (or honest lack of one)
 
-**Who this is for:** indie creators who want to grow a faceless or pseudonymous channel on TikTok / Instagram Reels / YouTube Shorts.
+This is a single-user tool, so the question isn't "what's the moat" — it's **"will the output be good enough to publish."** Answer drives everything.
 
-Three concrete profiles:
+The thing that has to work:
 
-| Persona | What they want | Why we win |
-|---|---|---|
-| **The faceless creator** — wants distribution but doesn't want to be on camera | A consistent on-screen "character" that isn't them | Recurring AI persona = built-in faceless brand |
-| **The over-extended creator** — already has a real face but can't ship at cadence | A second-channel persona for high-volume content | Same person can run a "main" channel and a sidekick AI channel |
-| **The format-tester** — runs many small experimental channels | Cheap iteration on personas + topics | Per-character setup is fast; per-clip cost is low |
+1. **Long-form AI presenter video has to be watchable for 10 minutes.** Talking-head straight to camera for 10 minutes is hard to watch even when a real human does it. AI heads have additional uncanny-valley + lip-sync issues. If audiences bounce at 2 minutes, the per-view ad revenue collapses and so does the value of the tool.
+2. **Comedy at length.** A 30-second bit can survive on a punchline. A 10-minute bit needs structure — escalating beats, callbacks, a real argument. Claude can write this; making it consistently funny is the open question.
 
-**Not for:** broadcasters who need their own face on screen, brands that need legal-clean talent, anyone whose audience would feel betrayed by AI.
+What is **not** a moat: the video model, the voice provider, the LLM, this codebase. We're a thin orchestration layer on top of three external APIs. That's fine for a single-user tool. It would not be a defensible business.
+
+---
+
+## 4. Distribution targets
+
+**Primary: YouTube** (long-form, 3–20 min, 16:9). Where long-form pays.
+**Secondary: Facebook** (feed video, 16:9). Where the older audience is, and where competition is thin.
+
+**Not** TikTok / Reels / Shorts — those need vertical 9:16 ≤ 60s, which is a different product. Possible later, not Phase 1.
+
+Posting is **manual**: download MP4, upload via the platform's UI. Auto-post is deferred until we know the videos are worth posting.
 
 ---
 
 ## 5. Positioning
 
-**Not** an avatar generator. **Not** a video editor. **Not** a script tool.
+This is not a SaaS, not a creator tool, not a marketplace. It's **the founder's content factory**. Single deployment, single user, single character (or two), single editor (you).
 
-A **comedy clip factory**: type a topic, get a finished clip starring your recurring character.
-
-Category we want to own: *AI persona-driven short-form video.*
+If we ever decide to flip it to multi-user, the architecture supports that pivot — the `user_id` columns are still there, just constant. Re-enable RLS, swap the password gate for Supabase auth, add Stripe — none of which is built today.
 
 ---
 
 ## 6. Phases
 
-### Phase 0 — Prove the comedy works (Weeks 1–3)
+### Phase 0 — prove the comedy at length (Weeks 1–2)
 
-Before any code, validate that the script-generation prompt actually produces funny material. Steps:
+Before any video render, validate that Claude can write a 10-minute comedy script that holds together. Run `npm run smoke:script` against a fixture persona with 5 different topics. Read the output out loud. Score each 1–5 for "would I watch this all the way through." Iterate the prompt until ≥40% score 4+.
 
-- Hand-design a comedy persona ("snarky tech analyst", "tired millennial parent", "gen-z cynic").
-- Ship 30 generated scripts through manual review. Score each 1–5 for "would I watch this."
-- Iterate the prompt until ≥40% score 4+.
+If we can't write a watchable text script, the video will be worse. No video render until the script lands.
 
-If we can't get to 40% on text alone, no amount of video polish will save us.
+### Phase 1 — first finished video (Weeks 3–6)
 
-### Phase 1 — One-click clip factory (Weeks 4–10)
+End-to-end pipeline: script → voice → HeyGen video → manual upload. One character, one user, no analytics, no editing.
 
-Web app. User signs up, sets up one character (uploads a reference image, picks a voice from ElevenLabs presets, writes a 100-word persona description), then enters topics and gets back finished clips.
-
-Stack (intentionally minimal):
+Stack:
 
 - Next.js (App Router) on Railway
-- Supabase (Postgres + auth + storage)
-- Anthropic Claude — comedy script generation
-- ElevenLabs — voice synthesis
-- Hedra (Character-3) — talking-head video generation from image + voice + script
-- Stripe — billing
+- Supabase (Postgres + Storage)
+- Anthropic Claude (Opus 4.7, adaptive thinking, cached persona prefix)
+- ElevenLabs (voice synthesis, curated preset voices)
+- HeyGen V2 (Photo Avatar talking-head, supports long-form)
+- Single-password gate (no Stripe, no Supabase auth)
 
 What's deferred to Phase 2:
 
-- Custom voice cloning (use ElevenLabs presets only)
-- Multi-character scenes (single talking head only)
-- Captions / on-screen text overlays
-- Upload-to-platform automation
-- Scheduled posting
+- B-roll / scene cuts (would require an FFmpeg pipeline + asset library)
+- Captions / on-screen text
+- Background music
+- Direct upload to YouTube / Facebook
+- Multi-character scenes
 
-### Phase 2 — Sharper clips, faster loop (Month 4+)
+### Phase 2 — polish (Month 3+)
 
-Only build after Phase 1 has 50 paying users with >50% week-2 retention. At that point:
+Only if Phase 1 produces videos with >40% audience retention at 5 minutes. At that point:
 
-- Custom voice cloning (record 1 minute of yourself, get a unique voice)
+- B-roll insertion via stock footage APIs (Pexels, Storyblocks)
 - Burned-in captions for accessibility / autoplay
-- Background music and basic VFX
-- B-roll / cutaway shots between character beats
-- Direct posting to TikTok / Reels
+- Background music (suno.com or Mubert)
+- Direct YouTube upload via the Data API
+- Multi-character scenes (would force a rethink of the video provider — HeyGen handles 1 avatar per render)
 
 ---
 
-## 7. Character spec (the thing the user sets up once)
+## 7. Character spec
 
-```
+```json
 {
-  "character_id": "...",
+  "id": "...",
   "name": "Tom",
-  "reference_image": "https://...",          // 1024×1024, face-forward, neutral
+  "reference_image_url": "heygen://<avatar_id>",
   "voice": {
     "provider": "elevenlabs",
     "voice_id": "...",
@@ -142,76 +128,69 @@ Only build after Phase 1 has 50 paying users with >50% week-2 retention. At that
   },
   "persona": {
     "one_liner": "Snarky tech analyst who's seen it all",
-    "perspective": "...",                    // 100-word description
-    "delivery": "deadpan|hyped|exasperated|wry",
-    "vocabulary_hits": ["actually", "look", "hot take"],
+    "perspective": "...",
+    "delivery": "deadpan",
+    "vocabulary_hits": ["actually", "look"],
     "avoided_phrases": ["folks", "amazing"],
-    "running_jokes": ["VC bingo", "the year is 2027"],
     "audience": "tech-adjacent millennials"
   },
   "format": {
-    "aspect_ratio": "9:16",
-    "target_duration_sec": 30,
-    "max_duration_sec": 45
+    "aspect_ratio": "16:9",
+    "target_duration_sec": 600
   }
 }
 ```
 
-The persona block is what makes the same character produce consistent comedy across topics. It feeds Claude on every script generation.
+Note `reference_image_url` uses a `heygen://<avatar_id>` URL scheme. The user creates the Photo Avatar manually in the HeyGen dashboard from a still image, then pastes the avatar_id into the character form. We don't try to magic-create avatars from arbitrary URLs — HeyGen's avatar onboarding has its own UX and rules.
 
 ---
 
 ## 8. Generation pipeline
 
 ```
-User types topic
-       │
-       ▼
-┌────────────────────┐
-│ Claude — script    │  ~10 sec, ~$0.05
-│ persona + topic →  │
-│ 30-sec script      │
-└──────────┬─────────┘
-           │  script (text)
-           ▼
-┌────────────────────┐
-│ ElevenLabs — voice │  ~15 sec, ~$0.02
-│ script + voice_id  │
-│ → MP3              │
-└──────────┬─────────┘
-           │  audio file
-           ▼
-┌────────────────────┐
-│ Hedra — video      │  ~3 min, ~$0.50
-│ image + audio +    │
-│ persona → MP4      │
-└──────────┬─────────┘
-           │  video URL
-           ▼
-       Library
+Topic
+  │
+  ▼
+Claude (script, ~30 sec, ~$0.10)
+  │ produces hook + 3-6 segments + outro, ~1500 words for 10 min
+  ▼
+ElevenLabs (voice, ~30 sec, ~$0.30)
+  │ MP3 of the full script
+  ▼
+Supabase Storage (audio_url)
+  │
+  ▼
+HeyGen render kicked off (async)
+  │ video provider returns a job_id; we persist it
+  ▼
+[gap of 5-15 min while HeyGen renders]
+  │
+  ▼
+/api/jobs/poll detects completion
+  │ fetches MP4, mirrors to Supabase Storage
+  ▼
+clip.status = 'done', video_url populated
+  │
+  ▼
+Library — download, upload to YouTube
 ```
 
-**Total**: ~3 minutes wall-clock, ~$0.60 per clip. We charge $0.99–1.99 per clip on a credit pack model, or unlimited monthly tiers.
-
-The Hedra step is async — we kick the job off, persist the job ID, and poll (or webhook) until done. Everything else is sync.
+**Total**: 5–15 minutes wall-clock, ~$3–8 of API spend per 10-min video (HeyGen dominates).
 
 ---
 
-## 9. Pricing — credit-based
+## 9. No pricing — solo deployment
 
-Setup is free. Comedy is volume-driven, so the right model is per-clip credits with a bulk discount.
+This is a personal tool. You pay the API providers directly. Estimated monthly cost for 30 videos/month:
 
-**Monthly credit packs:**
+- Anthropic: ~$3
+- ElevenLabs: $22 starter plan covers it
+- HeyGen: ~$200–300 depending on plan
+- Supabase + Railway: free tier suffices
 
-- **Trial** — 3 free clips, no credit card. Burns down fast on purpose; converts the curious.
-- **Hobbyist** — $19 / mo · 20 clips/mo · 1 character
-- **Creator** — $49 / mo · 60 clips/mo · 3 characters
-- **Pro** — $99 / mo · 150 clips/mo · 10 characters
-- **Studio** — custom · enterprise / agency
+So roughly **$8–10 per finished 10-minute video**, plus the ElevenLabs base.
 
-**One-time top-ups** at $1.50 / clip for users who blow through their pack mid-month.
-
-**Why credit packs over flat-rate:** unit cost per clip is ~$0.60 to us (Hedra dominates). A Pro user generating 150 clips costs us ~$90 — Pro tier covers it with a thin margin. Flat-rate "unlimited" plans get gamed by power users and erase the margin. Credits are honest.
+If you ever flip to multi-user, see v1 BIBLE.md (`_archive/v1-creatoros-ai/`) for credit-based pricing logic.
 
 ---
 
@@ -219,128 +198,85 @@ Setup is free. Comedy is volume-driven, so the right model is per-clip credits w
 
 ```
 ┌──────────────────────────────────────────────────┐
-│              Next.js (Railway)                   │
-│  /character  /generate  /library  /billing       │
+│             Next.js (Railway)                    │
+│  /character  /generate  /library  /login         │
 └────────┬─────────────────────────────────────────┘
-         │
+         │ APP_PASSWORD cookie gate
          ▼
 ┌──────────────────────────────────────────────────┐
 │             Next.js API routes                   │
-│  /character    /generate   /jobs/poll            │
-│  /webhooks/hedra           /webhooks/stripe      │
+│  /character    /generate   /clips/[id]           │
+│  /jobs/poll    /auth       /health               │
 └────┬───────────┬──────────────┬──────────────────┘
      │           │              │
      ▼           ▼              ▼
 ┌─────────┐ ┌─────────┐ ┌─────────────────────┐
-│Supabase │ │ Claude  │ │ External video APIs │
-│Postgres │ │ Eleven  │ │  · Hedra (primary)  │
-│Auth     │ │ Labs    │ │  · HeyGen (backup)  │
-│Storage  │ │         │ │                     │
+│Supabase │ │ Claude  │ │  Video provider     │
+│Postgres │ │ Eleven  │ │  · HeyGen (default) │
+│Storage  │ │ Labs    │ │  · Hedra (swap-in)  │
 └─────────┘ └─────────┘ └─────────────────────┘
 ```
 
-**Database tables (Phase 1):**
+**Database tables:**
 
-- `users` — Supabase auth + profile
-- `characters` — one row per user-defined persona
-- `clips` — every generation, with `status` (queued | scripting | voicing | rendering | done | failed)
-- `script_revisions` — store every Claude script call so we can A/B prompts
-- `credits` — wallet balance + pack purchases
-- `subscriptions` — Stripe state
+- `characters` — your AI persona(s)
+- `clips` — every generation, with `status` (queued | scripting | voicing | rendering | done | failed) and `provider_job_id`
 
-**Async pattern**: Hedra render takes 1–4 minutes. We use a single cron-style poll route (`/api/jobs/poll`, hit by Railway's cron or a 30-second interval client poll) plus a webhook (`/api/webhooks/hedra`) when supported. No Redis, no BullMQ — just a `clips.status` field + the provider's own job queue.
+No `users` table — single-user, gated by middleware.
+No `subscriptions` table — no billing.
 
-**Storage**: video MP4 files live in Supabase Storage. We hand the user a signed URL.
+**Async pattern**: HeyGen render is 5–15 min. We persist `provider_job_id`, and `/api/jobs/poll` (cron-driven) walks every `clips.status='rendering'` row and asks the provider whether it's done.
 
-**Environment variables:**
-
-```
-ANTHROPIC_API_KEY=
-ELEVENLABS_API_KEY=
-HEDRA_API_KEY=
-
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-
-STRIPE_SECRET_KEY=
-STRIPE_WEBHOOK_SECRET=
-
-ADMIN_USER_IDS=
-```
+**Provider abstraction**: `src/lib/providers/video.ts` defines a single `VideoProvider` interface. HeyGen is the implementation; Hedra can be added the same way. `VIDEO_PROVIDER` env var picks one.
 
 ---
 
-## 11. User flow — Phase 1
+## 11. User flow
 
-1. **Sign up.** Email + password (Supabase auth). Lands on `/character/new`.
-2. **Set up character (~5 min).** Upload a reference image (we suggest free Unsplash portraits or Midjourney outputs they own). Pick a voice from ElevenLabs presets (we narrow to ~12 hand-curated options). Write a 100-word persona description. Save.
-3. **Generate (~3 min wait).** Type a topic. Click Generate. Watch a progress indicator: *Writing script… Recording voice… Rendering video…*
-4. **Review.** Video plays inline. Three buttons: **Download**, **Regenerate** (gives Claude a feedback note like "punchier", "shorter", "less obvious"), **Trash**.
-5. **Library.** All past clips sortable by date / character / topic.
-
-**No on-platform posting in Phase 1.** Download and post manually. Auto-post comes only after we've earned trust on quality.
+1. **Sign in.** Single password page. Cookie set for 30 days.
+2. **Set up character (~5 min, one-time).** Create a HeyGen Photo Avatar in the HeyGen dashboard → paste its avatar_id. Pick a voice from the curated ElevenLabs list. Pick aspect (16:9 default). Pick target length (8 min default). Write a one-liner persona + a 100-word perspective + vocabulary lists + audience.
+3. **Generate.** Type a topic. Click. Status updates: *Writing script → Recording voice → Rendering video*. Total 5–15 min wall-clock.
+4. **Review.** Video plays inline at 16:9. Three buttons: **Download MP4**, **Library**, **Generate another**.
+5. **Upload manually** to YouTube / Facebook.
 
 ---
 
-## 12. Distribution — the section that has to come early
+## 12. Metrics that matter
 
-Same three-loop structure as any AI creator tool, with one twist:
+This is a personal tool, not a product, so metrics are about **whether the output is good enough to publish**:
 
-### Loop 1 — Build a public character on the product
-
-The fastest proof is a TikTok / Reels channel run *entirely* with the product. We pick a persona ("Tom, the snarky tech analyst" or whatever lands), commit to 5 clips/week for 12 weeks, and let the audience growth (or lack of it) be the live demo.
-
-Founder-as-creator, except the creator is fictional.
-
-### Loop 2 — Side-by-side clips
-
-For every paying user, ask permission to feature one clip on the marketing site as a case study. Real persona, real topic, real output. 10 clips of varied personas does more than any landing-page copy.
-
-### Loop 3 — Free trial does the selling
-
-Three free clips on signup, no credit card. The first one shocks people. The second has them showing it to a friend. The third converts. **Credit gates and pricing screens never see the user before their first finished clip.**
-
----
-
-## 13. Metrics that actually matter
-
-|Metric                                     |Target by Month 6    |
-|-------------------------------------------|---------------------|
-|Trial → paid conversion                    |>15%                 |
-|Paid users                                 |200                  |
-|Median clips/user/month (paid)             |>15                  |
-|Week-2 retention                           |>50%                 |
-|Time from signup → first finished clip     |<10 minutes          |
-|Funny rate (% clips user keeps)            |>50%                 |
-|MRR                                        |$8k+                 |
-
-**Funny rate** is the leading indicator. Below 50% kept-clips, retention dies. Above 70%, we have a real product.
-
----
-
-## 14. Risks and mitigations
-
-|Risk|Mitigation|
+| Metric | Target |
 |---|---|
-|Comedy isn't actually funny|Phase 0 hand-validation. Don't write app code until 40% of generated scripts pass the "would I watch" bar.|
-|Hedra is slow / unreliable|Abstract video provider behind one interface; HeyGen as a hot backup. Status page + per-clip retries.|
-|Hedra raises prices or shuts the API|Same provider abstraction. Open-weights talking-head models (LivePortrait, Hallo) are improving fast and could be self-hosted by Phase 2.|
-|Audiences reject "AI character" content|Lean into it as a feature, not a bug. The persona is a known-AI character with consistent identity, not a deepfake of a real person.|
-|Misuse: deepfakes of real people|Reference images go through a face-match check against a known-public-figures database. Reject obvious matches.|
-|Cost per clip kills the margin|Per-clip credits, not flat-rate. Real-time monitoring of cost-per-clip per user.|
+| Generated videos that you actually upload (vs trash) | >40% |
+| Average watch-through % on published videos | >35% (YouTube average is ~20–30% for long-form) |
+| Time topic → uploaded | <30 min |
+| Cost per uploaded video | <$15 |
+
+If <40% of generated videos are uploadable after Phase 1, the prompt or the provider are the problem. Tune them, or fall back to shorter formats.
 
 ---
 
-## 15. Strategic rules
+## 13. Risks and mitigations
 
-1. **Funny first.** Until the comedy works in pure text, we don't ship anything else.
-2. **One character per user, until proven.** Multi-character is Phase 1.5.
-3. **Three providers max.** Claude, ElevenLabs, Hedra. Every additional provider is engineering debt.
-4. **Per-clip economics, always.** Never offer a plan whose unit economics depend on customers not using it.
-5. **The character is the brand.** Long-term, the audience belongs to the character, not to the creator behind it. Build for that.
-6. **Founder runs a public character.** From day one. The proof is on a public feed, not in a deck.
+| Risk | Mitigation |
+|---|---|
+| 10 min of one AI face is unwatchable | Start at 5–8 min and lengthen only if retention holds. Provider abstraction makes it easy to test HeyGen vs alternatives. |
+| Comedy at length is too hard for the LLM | Phase 0 hand-validation. Don't render videos until the text scripts land. |
+| HeyGen render fails / queue grows / pricing changes | `VideoProvider` interface lets us swap to Hedra, Synthesia, D-ID, or self-hosted (LivePortrait, Hallo) with minimal code change. |
+| Audiences reject AI-presenter content | Lean into it as a feature: the persona is openly fictional. Pick a name, build a public character, let the audience decide. |
+| Misuse: deepfaking real people | The Photo Avatar is created by the user in HeyGen's dashboard, which has its own consent flow. We don't accept arbitrary image URLs into a face-generation pipeline. |
 
 ---
 
-*v1 is opinionated by design. Disagreement on any specific call is welcome — the document exists to be argued with.*
+## 14. Strategic rules
+
+1. **Output quality > everything.** No new feature ships before Phase 0 hand-validation passes.
+2. **One character, one channel, until it works.** Multi-character is Phase 2.
+3. **Three providers, one DB, one frontend.** Every additional provider is engineering debt.
+4. **Single-user assumption is real.** Don't write code that makes sense only in a multi-user world (per-org analytics, sharing, invites). Strip it whenever you see it.
+5. **Manual upload is fine.** Auto-upload to YouTube / Facebook is Phase 2 — and only if you're confident enough in the output to want it on a daily cadence.
+6. **The persona is the brand.** You're the editor. The character is the talent.
+
+---
+
+*v2 is opinionated and scoped to a real, single user. Disagreement on any specific call is welcome — the document exists to be argued with.*

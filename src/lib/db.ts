@@ -1,43 +1,47 @@
 import { supabaseService } from "./supabase/server";
 import { Character, ClipStatus, Persona, Script } from "./types";
 
-export async function listCharacters(userId: string) {
+// Single-user mode: all rows belong to the same fictitious "owner" user_id.
+// Kept as a column so we can flip back to multi-tenant by setting it from
+// auth and re-enabling RLS on the tables.
+const OWNER_ID = "00000000-0000-0000-0000-000000000001";
+
+export async function listCharacters() {
   const sb = supabaseService();
   const { data, error } = await sb
     .from("characters")
     .select("*")
-    .eq("user_id", userId)
     .order("created_at", { ascending: false });
   if (error) throw error;
   return (data ?? []) as Character[];
 }
 
-export async function getCharacter(id: string, userId: string) {
+export async function getCharacter(id: string) {
   const sb = supabaseService();
   const { data, error } = await sb
     .from("characters")
     .select("*")
     .eq("id", id)
-    .eq("user_id", userId)
     .maybeSingle();
   if (error) throw error;
   return data as Character | null;
 }
 
 export async function createCharacter(args: {
-  userId: string;
   name: string;
   reference_image_url: string;
   voice_id: string;
   persona: Persona;
   voice_stability?: number;
   voice_similarity_boost?: number;
+  aspect_ratio?: "9:16" | "1:1" | "16:9";
+  target_duration_sec?: number;
 }) {
   const sb = supabaseService();
   const { data, error } = await sb
     .from("characters")
     .insert({
-      user_id: args.userId,
+      user_id: OWNER_ID,
       name: args.name,
       reference_image_url: args.reference_image_url,
       voice_provider: "elevenlabs",
@@ -45,8 +49,8 @@ export async function createCharacter(args: {
       voice_stability: args.voice_stability ?? 0.5,
       voice_similarity_boost: args.voice_similarity_boost ?? 0.75,
       persona: args.persona,
-      aspect_ratio: "9:16",
-      target_duration_sec: 30,
+      aspect_ratio: args.aspect_ratio ?? "16:9",
+      target_duration_sec: args.target_duration_sec ?? 600,
     })
     .select()
     .single();
@@ -54,16 +58,12 @@ export async function createCharacter(args: {
   return data as Character;
 }
 
-export async function createClip(args: {
-  userId: string;
-  characterId: string;
-  topic: string;
-}) {
+export async function createClip(args: { characterId: string; topic: string }) {
   const sb = supabaseService();
   const { data, error } = await sb
     .from("clips")
     .insert({
-      user_id: args.userId,
+      user_id: OWNER_ID,
       character_id: args.characterId,
       topic: args.topic,
       status: "queued" as ClipStatus,
@@ -71,7 +71,7 @@ export async function createClip(args: {
     .select()
     .single();
   if (error) throw error;
-  return data;
+  return data as { id: string; character_id: string; topic: string; status: ClipStatus };
 }
 
 export async function updateClip(
@@ -81,7 +81,7 @@ export async function updateClip(
     script?: Script | null;
     audio_url?: string | null;
     video_url?: string | null;
-    hedra_job_id?: string | null;
+    provider_job_id?: string | null;
     error?: string | null;
     completed_at?: string | null;
   },
@@ -91,28 +91,46 @@ export async function updateClip(
   if (error) throw error;
 }
 
-export async function getClip(id: string, userId: string) {
+type ClipRow = {
+  id: string;
+  user_id: string;
+  character_id: string;
+  topic: string;
+  status: ClipStatus;
+  script: Script | null;
+  audio_url: string | null;
+  video_url: string | null;
+  provider_job_id: string | null;
+  error: string | null;
+  created_at: string;
+  completed_at: string | null;
+};
+
+type ClipSummary = Pick<
+  ClipRow,
+  "id" | "character_id" | "topic" | "status" | "video_url" | "created_at" | "completed_at"
+>;
+
+export async function getClip(id: string) {
   const sb = supabaseService();
   const { data, error } = await sb
     .from("clips")
     .select("*")
     .eq("id", id)
-    .eq("user_id", userId)
     .maybeSingle();
   if (error) throw error;
-  return data;
+  return data as ClipRow | null;
 }
 
-export async function listClips(userId: string) {
+export async function listClips() {
   const sb = supabaseService();
   const { data, error } = await sb
     .from("clips")
     .select("id, character_id, topic, status, video_url, created_at, completed_at")
-    .eq("user_id", userId)
     .order("created_at", { ascending: false })
-    .limit(50);
+    .limit(100);
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []) as ClipSummary[];
 }
 
 export async function listInFlightClips(limit = 20) {
@@ -124,5 +142,5 @@ export async function listInFlightClips(limit = 20) {
     .order("created_at", { ascending: true })
     .limit(limit);
   if (error) throw error;
-  return data ?? [];
+  return (data ?? []) as ClipRow[];
 }

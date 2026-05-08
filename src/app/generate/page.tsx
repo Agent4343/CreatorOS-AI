@@ -1,17 +1,15 @@
-import { requireUser } from "@/lib/auth";
 import { listCharacters } from "@/lib/db";
 import GenerateForm from "./GenerateForm";
 
 export default async function GeneratePage() {
-  const user = await requireUser();
-  const characters = await listCharacters(user.id);
+  const characters = await listCharacters();
 
   if (characters.length === 0) {
     return (
       <div className="rounded-md border border-ink/15 bg-white p-8 text-center">
         <h1 className="text-2xl font-bold">No character yet</h1>
         <p className="mt-2 text-muted">
-          You need a character before you can generate clips.
+          You need a character before you can generate a video.
         </p>
         <a
           href="/character/new"
@@ -29,7 +27,8 @@ export default async function GeneratePage() {
         id: c.id,
         name: c.name,
         one_liner: c.persona.one_liner,
-        reference_image_url: c.reference_image_url,
+        aspect_ratio: c.aspect_ratio,
+        target_duration_min: Math.round(c.target_duration_sec / 60),
       }))}
     />
   );

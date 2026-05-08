@@ -1,21 +1,17 @@
 import "./globals.css";
 import type { Metadata } from "next";
-import { supabaseServer } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
+import { SignOutButton } from "./SignOutButton";
 
 export const metadata: Metadata = {
-  title: "Reel — AI comedy clip factory",
+  title: "Reel — long-form AI comedy video factory",
   description:
-    "Type a topic, get a 30-second comedy video starring your recurring AI character.",
+    "Type a topic, get a long-form comedy video starring your recurring AI character.",
 };
 
-async function getUser() {
-  try {
-    const sb = await supabaseServer();
-    const { data } = await sb.auth.getUser();
-    return data.user;
-  } catch {
-    return null;
-  }
+async function isSignedIn(): Promise<boolean> {
+  const c = await cookies();
+  return !!c.get("reel_auth")?.value;
 }
 
 export default async function RootLayout({
@@ -23,7 +19,7 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const user = await getUser();
+  const signedIn = await isSignedIn();
 
   return (
     <html lang="en">
@@ -37,25 +33,19 @@ export default async function RootLayout({
               Reel<span className="text-accent">.</span>
             </a>
             <nav className="flex items-baseline gap-6 text-sm">
-              {user ? (
+              {signedIn && (
                 <>
                   <a href="/generate">Generate</a>
                   <a href="/library">Library</a>
                   <a href="/character">Character</a>
-                  <form action="/auth/signout" method="post">
-                    <button type="submit" className="text-xs text-muted underline">
-                      Sign out
-                    </button>
-                  </form>
+                  <SignOutButton />
                 </>
-              ) : (
-                <a href="/login">Sign in</a>
               )}
             </nav>
           </header>
           <main>{children}</main>
           <footer className="mt-24 border-t border-ink/10 pt-6 text-xs text-muted">
-            Reel · v0.1 · One topic in. One comedy clip out. ~3 minutes.
+            Reel · v0.2 · Single-user · One topic in. One long-form comedy video out.
           </footer>
         </div>
       </body>
