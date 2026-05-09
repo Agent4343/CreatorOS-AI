@@ -13,7 +13,8 @@ export default async function FormDetailPage({
   const user = await requireUser();
   const orgs = await listUserOrgs(user.id);
   if (orgs.length === 0) redirect("/onboarding");
-  const { org } = orgs[0];
+  const { org, role } = orgs[0];
+  const isAdmin = role === "owner" || role === "admin";
 
   const { id } = await params;
   const sb = supabaseService();
@@ -38,7 +39,17 @@ export default async function FormDetailPage({
         <a href="/forms" className="font-mono text-xs">
           ← back to forms
         </a>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight">{form.name}</h1>
+        <div className="mt-2 flex items-baseline justify-between gap-3">
+          <h1 className="text-3xl font-bold tracking-tight">{form.name}</h1>
+          {isAdmin && (
+            <a
+              href={`/forms/${form.id}/edit`}
+              className="rounded-md border border-ink/20 px-3 py-1.5 text-sm text-ink no-underline"
+            >
+              Edit
+            </a>
+          )}
+        </div>
         {form.description && (
           <p className="mt-1 text-muted">{form.description}</p>
         )}
