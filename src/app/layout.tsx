@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
+import { isPlatformAdmin } from "@/lib/platformAdmin";
 import { supabaseAuthed } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
@@ -24,6 +25,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const user = await getUser();
+  const admin = isPlatformAdmin(user?.id);
   return (
     <html lang="en">
       <body className="min-h-screen font-sans">
@@ -42,6 +44,7 @@ export default async function RootLayout({
                   <a href="/forms">Forms</a>
                   <a href="/submissions">Submissions</a>
                   <a href="/settings">Settings</a>
+                  {admin && <a href="/admin" className="text-accent">Admin</a>}
                   <form action="/auth/signout" method="post">
                     <button type="submit" className="text-xs text-muted underline">
                       Sign out

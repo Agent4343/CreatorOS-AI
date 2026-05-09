@@ -10,6 +10,16 @@ const REQUIRED = [
   "SUPABASE_SERVICE_ROLE_KEY",
 ];
 
+// Optional but worth surfacing in /api/health so the deploy can see
+// whether they're set. Not required for the app to start.
+const OPTIONAL = [
+  "STRIPE_SECRET_KEY",
+  "STRIPE_WEBHOOK_SECRET",
+  "STRIPE_PRICE_STARTER",
+  "STRIPE_PRICE_PRO",
+  "ADMIN_USER_IDS",
+];
+
 export async function GET() {
   const missing = REQUIRED.filter((k) => !process.env[k]);
   if (missing.length > 0) {
@@ -18,5 +28,6 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     commit: process.env.RAILWAY_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
+    optional_unset: OPTIONAL.filter((k) => !process.env[k]),
   });
 }

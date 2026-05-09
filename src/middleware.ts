@@ -7,6 +7,7 @@ const PROTECTED_PAGES = [
   "/submissions",
   "/settings",
   "/onboarding",
+  "/admin",
 ];
 const PROTECTED_API = [
   "/api/orgs",

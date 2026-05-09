@@ -73,6 +73,25 @@ Open http://localhost:3000.
 
 ---
 
+## 4.5 · Make yourself platform admin
+
+The platform-admin role is separate from per-org roles (owner/admin/member/viewer) — it's the founder/staff role that gets read access across every customer workspace via `/admin`.
+
+1. Sign up at `/login` (creates your Supabase auth user).
+2. In Supabase → **Authentication → Users**, find your row, copy the `id` (a UUID).
+3. Add it to `.env.local`:
+   ```
+   ADMIN_USER_IDS=<paste-the-uuid>
+   ```
+4. Restart `npm run dev`.
+5. Refresh the app — an **Admin** link appears in the nav. Click → `/admin` shows system counts and a list of every org.
+
+Multiple admins: comma-separate the UUIDs (`ADMIN_USER_IDS=uuid1,uuid2,uuid3`).
+
+The admin pages are read-only. Even with the role, you can't modify a customer's data through the UI — that's intentional, so a bug or a careless click can't silently mutate a signed submission.
+
+---
+
 ## 5 · Deploy to Railway
 
 1. railway.app → New Project → Deploy from GitHub repo.
