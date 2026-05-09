@@ -84,6 +84,47 @@ export async function runScriptPhase(args: {
 }
 
 /**
+ * Phase 1.5: user hand-edited the script. Re-run the 6 review agents
+ * against the edited script and update the scorecard. Cheaper than
+ * runScriptPhase (no script-gen call) and preserves the user's edits
+ * verbatim.
+ */
+export async function rereviewScript(args: {
+  clipId: string;
+  editedScript: Script;
+}): Promise<void> {
+  const clip = await getClip(args.clipId);
+  if (!clip) throw new Error("Clip not found");
+
+  const character = await getCharacter(clip.character_id);
+  if (!character) throw new Error("Character not found");
+  const c = CharacterSchema.parse(character);
+
+  try {
+    await updateClip(clip.id, {
+      script: args.editedScript,
+      status: "reviewing",
+    });
+
+    const scorecard = await reviewScript({
+      persona: c.persona,
+      topic: clip.topic,
+      targetDurationSec: c.target_duration_sec,
+      script: args.editedScript,
+    });
+
+    await updateClip(clip.id, {
+      review_scorecard: scorecard,
+      status: "awaiting_approval",
+    });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "Unknown error";
+    await updateClip(clip.id, { status: "failed", error: message });
+    throw e;
+  }
+}
+
+/**
  * Phase 2: user has approved the script → voice → video render.
  * Called when the user clicks "Approve & continue" in the UI.
  */

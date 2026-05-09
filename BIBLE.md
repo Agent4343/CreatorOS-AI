@@ -191,6 +191,16 @@ All six run **in parallel** against the generated script. The Claude calls share
 
 Per §1: creator does taste, system does production. The agents are an *assist*, not a substitute for the editor. Full-auto regeneration on every soft fail would cause the writer to thrash on subjective notes — the user is the final taste arbiter, especially on comedy where what an LLM thinks is "funnier" often isn't.
 
+**Three escape hatches when you disagree with the agents:**
+
+| Path | Cost | When to use |
+|---|---|---|
+| **Approve anyway** | $0 | Soft-fail issues you've judged are wrong (taste is yours) |
+| **Edit script inline** | ~$0.60 (re-review only) | The 5% the agents missed — fix one sentence yourself, save, agents re-score the edited version. No regen, no script-gen call. |
+| **Regenerate** | ~$1 (script + 6 reviews) | You want a different draft entirely. Optional creator feedback is merged with agent feedback. |
+
+The inline editor preserves your hand-edits verbatim and recomputes `estimated_seconds` from word count at 150 wpm so the pacing agent and chapter-timestamp math stay honest.
+
 ## 7c. Upload-prep agent (the 7th)
 
 A separate generator agent runs **after the user approves the script**, before voice/video render. It produces the YouTube + Facebook metadata pack that the creator copies straight into the platform's upload form:

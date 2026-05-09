@@ -51,7 +51,9 @@ export default function GenerateForm({
   const [clip, setClip] = useState<ClipShape | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [acting, setActing] = useState<"approve" | "regen" | null>(null);
+  const [acting, setActing] = useState<"approve" | "regen" | "save" | null>(
+    null,
+  );
   const [regenFeedback, setRegenFeedback] = useState("");
 
   const pollRef = useRef<NodeJS.Timeout | null>(null);
@@ -117,6 +119,26 @@ export default function GenerateForm({
       if (!res.ok) throw new Error(data.error ?? "Failed");
       await fetchClip(clipId);
       startPolling(clipId);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setActing(null);
+    }
+  }
+
+  async function saveEdited(editedScript: Script) {
+    if (!clipId) return;
+    setActing("save");
+    setError(null);
+    try {
+      const res = await fetch(`/api/clips/${clipId}/script`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ script: editedScript }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      await fetchClip(clipId);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     } finally {
@@ -227,6 +249,7 @@ export default function GenerateForm({
           acting={acting}
           onApprove={approve}
           onRegen={regen}
+          onSaveEdited={saveEdited}
         />
       )}
 
@@ -286,13 +309,15 @@ function ReviewGate({
   acting,
   onApprove,
   onRegen,
+  onSaveEdited,
 }: {
   clip: ClipShape;
   regenFeedback: string;
   setRegenFeedback: (s: string) => void;
-  acting: "approve" | "regen" | null;
+  acting: "approve" | "regen" | "save" | null;
   onApprove: () => void;
   onRegen: () => void;
+  onSaveEdited: (script: Script) => void;
 }) {
   const sc = clip.review_scorecard;
   const blocked = sc?.monetization_blocked ?? false;
@@ -343,36 +368,13 @@ function ReviewGate({
         </details>
       )}
 
-      <details className="rounded-md border border-ink/15 bg-white p-3">
-        <summary className="cursor-pointer text-sm font-medium">
-          Read the script ({clip.script?.estimated_seconds ? Math.round(clip.script.estimated_seconds / 60) : "?"} min · {clip.script?.segments.length ?? 0} segments)
-        </summary>
-        {clip.script && (
-          <div className="mt-3 space-y-3 text-sm">
-            <div className="font-bold">{clip.script.title}</div>
-            <div className="whitespace-pre-wrap rounded-md bg-bg p-3 leading-relaxed">
-              <em className="text-muted">[hook]</em>
-              {"\n"}
-              {clip.script.hook}
-            </div>
-            {clip.script.segments.map((seg, i) => (
-              <div
-                key={i}
-                className="whitespace-pre-wrap rounded-md bg-bg p-3 leading-relaxed"
-              >
-                <em className="text-muted">[segment {i + 1} — {seg.heading}]</em>
-                {"\n"}
-                {seg.body}
-              </div>
-            ))}
-            <div className="whitespace-pre-wrap rounded-md bg-bg p-3 leading-relaxed">
-              <em className="text-muted">[outro]</em>
-              {"\n"}
-              {clip.script.outro}
-            </div>
-          </div>
-        )}
-      </details>
+      {clip.script && (
+        <ScriptViewerEditor
+          script={clip.script}
+          acting={acting}
+          onSaveEdited={onSaveEdited}
+        />
+      )}
 
       <section className="rounded-md border border-ink/15 bg-white p-4">
         <h3 className="text-sm font-medium">What's next?</h3>
@@ -442,6 +444,226 @@ function ScoreTile({
       </div>
     </div>
   );
+}
+
+// ---- Script viewer / editor ----
+
+function ScriptViewerEditor({
+  script,
+  acting,
+  onSaveEdited,
+}: {
+  script: Script;
+  acting: "approve" | "regen" | "save" | null;
+  onSaveEdited: (script: Script) => void;
+}) {
+  // Local edit state. Reset whenever the underlying script changes
+  // (e.g. after a regen or a successful save fetches a new clip).
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<Script>(script);
+  // Reset draft when the parent script changes (regen, save).
+  useEffect(() => {
+    setDraft(script);
+    setEditing(false);
+  }, [script]);
+
+  function update<K extends keyof Script>(key: K, value: Script[K]) {
+    setDraft((d) => ({ ...d, [key]: value }));
+  }
+  function updateSegment(idx: number, key: "heading" | "body", value: string) {
+    setDraft((d) => ({
+      ...d,
+      segments: d.segments.map((s, i) =>
+        i === idx ? { ...s, [key]: value } : s,
+      ),
+    }));
+  }
+
+  const minutes = (estimateMinutes(draft) / 1).toFixed(1);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(script);
+
+  if (!editing) {
+    return (
+      <details
+        className="rounded-md border border-ink/15 bg-white p-3"
+        open={false}
+      >
+        <summary className="flex cursor-pointer items-baseline justify-between text-sm">
+          <span className="font-medium">
+            Read the script ({Math.round(script.estimated_seconds / 60)} min · {script.segments.length} segments)
+          </span>
+          <span
+            onClick={(e) => {
+              e.preventDefault();
+              setEditing(true);
+            }}
+            className="text-xs text-accent underline"
+            role="button"
+          >
+            edit
+          </span>
+        </summary>
+        <div className="mt-3 space-y-3 text-sm">
+          <div className="font-bold">{script.title}</div>
+          <div className="whitespace-pre-wrap rounded-md bg-bg p-3 leading-relaxed">
+            <em className="text-muted">[hook]</em>
+            {"\n"}
+            {script.hook}
+          </div>
+          {script.segments.map((seg, i) => (
+            <div
+              key={i}
+              className="whitespace-pre-wrap rounded-md bg-bg p-3 leading-relaxed"
+            >
+              <em className="text-muted">
+                [segment {i + 1} — {seg.heading}]
+              </em>
+              {"\n"}
+              {seg.body}
+            </div>
+          ))}
+          <div className="whitespace-pre-wrap rounded-md bg-bg p-3 leading-relaxed">
+            <em className="text-muted">[outro]</em>
+            {"\n"}
+            {script.outro}
+          </div>
+        </div>
+      </details>
+    );
+  }
+
+  return (
+    <section className="rounded-md border border-accent/40 bg-white p-3">
+      <div className="flex items-baseline justify-between">
+        <div>
+          <h3 className="text-sm font-medium">Editing script</h3>
+          <p className="text-xs text-muted">
+            Estimated runtime updates as you type (~150 wpm). Saving re-runs
+            the 6 review agents only — no script regeneration. ~$0.60 / ~10s.
+          </p>
+        </div>
+        <span className="font-mono text-xs text-muted">
+          ~{minutes} min · {countDraftWords(draft)} words
+        </span>
+      </div>
+
+      <div className="mt-3 space-y-3">
+        <EditField
+          label="Title (writer's working title)"
+          value={draft.title}
+          onChange={(v) => update("title", v)}
+        />
+        <EditField
+          label="Hook (first ~30 sec — earns the rest)"
+          value={draft.hook}
+          onChange={(v) => update("hook", v)}
+          rows={3}
+        />
+        {draft.segments.map((seg, i) => (
+          <div
+            key={i}
+            className="rounded-md border border-ink/10 bg-bg p-2"
+          >
+            <EditField
+              label={`Segment ${i + 1} heading`}
+              value={seg.heading}
+              onChange={(v) => updateSegment(i, "heading", v)}
+            />
+            <EditField
+              label={`Segment ${i + 1} body`}
+              value={seg.body}
+              onChange={(v) => updateSegment(i, "body", v)}
+              rows={5}
+            />
+          </div>
+        ))}
+        <EditField
+          label="Outro (land the plane)"
+          value={draft.outro}
+          onChange={(v) => update("outro", v)}
+          rows={3}
+        />
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={() => onSaveEdited(draft)}
+          disabled={acting !== null || !dirty}
+          className="rounded-md bg-ink px-4 py-2 text-sm font-medium text-bg disabled:opacity-50"
+        >
+          {acting === "save"
+            ? "Saving + re-reviewing…"
+            : dirty
+              ? "Save & re-review"
+              : "No changes"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setDraft(script);
+            setEditing(false);
+          }}
+          disabled={acting !== null}
+          className="rounded-md border border-ink/20 px-4 py-2 text-sm text-ink disabled:opacity-50"
+        >
+          Cancel
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function EditField({
+  label,
+  value,
+  onChange,
+  rows,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  rows?: number;
+}) {
+  if (rows && rows > 1) {
+    return (
+      <div className="space-y-1">
+        <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted">
+          {label}
+        </label>
+        <textarea
+          rows={rows}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full rounded-md border border-ink/20 bg-white p-2 text-sm leading-relaxed"
+        />
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-1">
+      <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted">
+        {label}
+      </label>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-md border border-ink/20 bg-white p-2 text-sm"
+      />
+    </div>
+  );
+}
+
+function countDraftWords(s: Script): number {
+  return [s.hook, ...s.segments.map((seg) => seg.body), s.outro]
+    .join(" ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+}
+
+function estimateMinutes(s: Script): number {
+  return countDraftWords(s) / 150;
 }
 
 // ---- Upload pack ----
