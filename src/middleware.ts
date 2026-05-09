@@ -8,7 +8,13 @@ const PROTECTED_PAGES = [
   "/settings",
   "/onboarding",
 ];
-const PROTECTED_API = ["/api/orgs", "/api/forms", "/api/submissions", "/api/invites"];
+const PROTECTED_API = [
+  "/api/orgs",
+  "/api/forms",
+  "/api/submissions",
+  "/api/invites",
+  "/api/uploads",
+];
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next({ request: req });

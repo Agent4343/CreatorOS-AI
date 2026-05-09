@@ -6,6 +6,7 @@ import type {
   FormField,
   SubmissionStatus,
 } from "@/lib/types";
+import PhotoField from "./PhotoField";
 import SignaturePad from "./SignaturePad";
 
 type SubmissionShape = {
@@ -166,6 +167,8 @@ export default function SubmissionRunner({
                 signed={signed.find((s) => s.field_id === f.id)}
                 onSign={(img) => applySignature(f.id, img)}
                 currentUserId={currentUserId}
+                orgId={submission.org_id}
+                submissionId={submission.id}
               />
             ))}
           </div>
@@ -200,6 +203,8 @@ function FieldRenderer({
   canEdit,
   signed,
   onSign,
+  orgId,
+  submissionId,
 }: {
   field: FormField;
   value: unknown;
@@ -208,6 +213,8 @@ function FieldRenderer({
   signed?: SignedField;
   onSign: (img: string) => void;
   currentUserId: string;
+  orgId: string;
+  submissionId: string;
 }) {
   const disabled = !canEdit || !!signed;
   const labelEl = (
@@ -380,19 +387,14 @@ function FieldRenderer({
       );
     case "photo":
       return (
-        <div>
-          {labelEl}
-          <p className="mt-1 text-xs text-muted">
-            Photo upload (storage wiring is the next layer — UI placeholder for v1)
-          </p>
-          <input
-            type="file"
-            accept="image/*"
-            multiple={!!field.multiple}
-            disabled={disabled}
-            className="mt-1 text-sm"
-          />
-        </div>
+        <PhotoField
+          field={field}
+          orgId={orgId}
+          submissionId={submissionId}
+          value={value as string[] | undefined}
+          onChange={(paths) => onChange(paths)}
+          disabled={disabled}
+        />
       );
     case "gps":
       return (
