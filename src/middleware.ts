@@ -1,67 +1,53 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
 
-const COOKIE_NAME = "reel_auth";
-const PUBLIC_PATHS = new Set(["/login", "/api/auth", "/api/health"]);
+const PROTECTED_PAGES = [
+  "/dashboard",
+  "/forms",
+  "/submissions",
+  "/settings",
+  "/onboarding",
+];
+const PROTECTED_API = ["/api/orgs", "/api/forms", "/api/submissions"];
 
-/**
- * Single-user password gate. Set APP_PASSWORD in env. Anyone hitting
- * the app gets bounced to /login if their cookie doesn't match.
- *
- * Cookie value is the SHA-256 of APP_PASSWORD — that way we never
- * store the password, and a cookie leak is mitigated by rotating
- * APP_PASSWORD (which changes the expected hash, invalidating every
- * issued cookie). HTTP-only + secure flags on the cookie itself.
- */
 export async function middleware(req: NextRequest) {
+  const res = NextResponse.next({ request: req });
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return res;
+
+  const supabase = createServerClient(url, key, {
+    cookies: {
+      getAll: () => req.cookies.getAll(),
+      setAll: (toSet) => {
+        for (const { name, value, options } of toSet) {
+          res.cookies.set(name, value, options);
+        }
+      },
+    },
+  });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   const path = req.nextUrl.pathname;
+  const isPage = PROTECTED_PAGES.some((p) => path.startsWith(p));
+  const isApi = PROTECTED_API.some((p) => path.startsWith(p));
 
-  // Static + Next internals + a small allowlist
-  if (
-    path.startsWith("/_next") ||
-    path === "/favicon.ico" ||
-    path.match(/\.(svg|png|jpg|jpeg|gif|webp|mp4)$/)
-  ) {
-    return NextResponse.next();
-  }
-  if (PUBLIC_PATHS.has(path)) return NextResponse.next();
-  // /api/jobs/poll uses its own bearer auth; don't gate it with the cookie.
-  if (path.startsWith("/api/jobs/")) return NextResponse.next();
-
-  const password = process.env.APP_PASSWORD;
-  if (!password) {
-    // No password configured — fail closed. Friendly error.
-    return NextResponse.json(
-      { error: "APP_PASSWORD is not configured on the server" },
-      { status: 503 },
-    );
-  }
-
-  const expected = await hash(password);
-  const cookie = req.cookies.get(COOKIE_NAME)?.value;
-
-  if (cookie !== expected) {
-    if (path.startsWith("/api/")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  if (!user && isPage) {
     const redirect = req.nextUrl.clone();
     redirect.pathname = "/login";
     redirect.searchParams.set("next", path);
     return NextResponse.redirect(redirect);
   }
-
-  return NextResponse.next();
-}
-
-async function hash(s: string): Promise<string> {
-  const buf = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(s),
-  );
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  if (!user && isApi) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  return res;
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image).*)"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
 };

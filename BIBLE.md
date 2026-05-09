@@ -1,370 +1,396 @@
-# Reel — Project Bible v2 (single-user, long-form)
+# FieldForm — Project Bible v1
 
-**An AI long-form video factory for one creator.** Type a topic, get a 5–15 minute video starring your recurring AI character — ready to upload to YouTube or Facebook.
-*Working title: "Reel" — to be renamed before launch.*
-*Version 2.0 · May 2026*
+**A digital forms + checklists platform for any business that runs work in the field.** Design a form in the app, or upload a paper copy and let AI digitize it. Workers complete forms on phone, tablet, or computer — with compliant, auditable signatures. Multi-tenant, security-first.
+*Version 1.0 · May 2026*
 
 ---
 
-## 0. What changed from v1
+## 0. What this is
 
-v1 was a multi-user SaaS pumping out 30-second TikTok-style comedy clips. v2 is a tool **for one creator** producing **long-form videos** for **YouTube + Facebook**. Everything follows from those two changes:
+A SaaS platform where:
 
-- **Single user.** No signup, no Stripe, no credits, no per-user RLS. One `APP_PASSWORD` gate. ~30% less code.
-- **Long-form (16:9, 3–20 min).** Different video provider, different script structure, different UX. Hedra (≤90s talking-head) → **HeyGen** (long-form Photo Avatars).
-- **YouTube + Facebook are the targets.** No TikTok-specific tooling. No vertical defaults. Manual upload — automation is Phase 2.
+- A **business signs up** and gets its own isolated workspace.
+- The **business owner / admin** designs digital forms — drag-and-drop, OR uploads a paper form/PDF and AI converts it into a digital form they can edit.
+- They **invite their employees** as users (with assigned roles).
+- Workers **complete forms in the field** on phone or tablet — capturing photos, GPS, and compliant electronic signatures.
+- Forms can require **one or many signers** (foreman fills section A → safety officer signs B → manager approves C).
+- Every signature is bound to a verified user identity with a full **audit trail** (timestamp, IP, geolocation, hash of the data signed) for regulatory compliance.
+
+Industry-agnostic — the same engine handles a construction safety inspection, an HVAC service ticket, a manufacturing QC checklist, a vehicle pre-trip inspection, or a field clinic intake form.
 
 ---
 
 ## 1. Vision
 
-The lowest-friction path from "topic" to "uploadable long-form video" — for one creator, building one channel, with one recurring AI persona.
+The forms-and-checklists category exists (SafetyCulture / iAuditor, Fluix, ProntoForms, GoFormz, Zoho Forms) but every incumbent has the same gap: **converting an existing paper form into a working digital one is painful.** Old OCR + manual field-mapping + form-builder learning curve. Modern multimodal AI eats that workflow whole.
 
-The creator does taste (pick the topic, review, upload). The system does production (script, voice, render). Goal: a creator can publish a polished 10-minute video every day without filming, scripting, or editing themselves.
+Our wedge: **paper-to-digital that actually works.** Upload the form; AI returns a clean schema; you edit and ship. Ten-minute onboarding instead of three-week implementation.
+
+The rest of the product (form builder, mobile completion, signatures, audit) needs to be table-stakes — clean, fast, secure. The wedge is the door; the rest is the room.
 
 ---
 
 ## 2. The problem
 
-Long-form YouTube comedy is the highest-value short-form-adjacent format — better algorithm reach, better ad revenue per view, better audience retention than Shorts. It's also the hardest to produce. To ship one 10-minute video, a creator needs:
+Every business with field work has three painful workflows:
 
-- A premise sharp enough to hold attention for 10 minutes
-- A 1500-word script that lands consistently
-- Camera, lighting, mic, themselves on-screen
-- Editing (cuts, b-roll, music, captions) — or it looks amateur
-- Realistically, 8–20 hours per video
+| Pain | Today |
+|---|---|
+| Paper forms in pickup trucks, on clipboards, in service vans | Lost, illegible, photographed and emailed, manually re-entered |
+| Compliance audits | Dig through filing cabinets / shared drives looking for the signed form from June 2024 |
+| Multi-step approvals | Form gets faxed / emailed / passed around, signatures collected by hand, no audit trail |
 
-Most long-form creators ship **once a week, max**. The algorithm rewards 3–5 uploads/week. The math doesn't work without a team or a tool.
+A platform like FieldForm replaces all three with: forms designed once, completed once, signed compliantly, retrievable in seconds, and always audit-ready.
 
-What the AI version unlocks: **one persona, infinite topics, finished videos in 15 minutes.** Move the bottleneck from production to taste — the creator picks topics, reviews, and uploads. Everything else is automated.
-
----
-
-## 3. The honest moat (or honest lack of one)
-
-This is a single-user tool, so the question isn't "what's the moat" — it's **"will the output be good enough to publish."** Answer drives everything.
-
-The thing that has to work:
-
-1. **Long-form AI presenter video has to be watchable for 10 minutes.** Talking-head straight to camera for 10 minutes is hard to watch even when a real human does it. AI heads have additional uncanny-valley + lip-sync issues. If audiences bounce at 2 minutes, the per-view ad revenue collapses and so does the value of the tool.
-2. **Comedy at length.** A 30-second bit can survive on a punchline. A 10-minute bit needs structure — escalating beats, callbacks, a real argument. Claude can write this; making it consistently funny is the open question.
-
-What is **not** a moat: the video model, the voice provider, the LLM, this codebase. We're a thin orchestration layer on top of three external APIs. That's fine for a single-user tool. It would not be a defensible business.
+The reason businesses stay on paper isn't that no software exists — it's that switching is hard. Existing tools require someone to manually rebuild every form. AI removes that friction.
 
 ---
 
-## 4. Distribution targets
+## 3. The honest moat
 
-**Primary: YouTube** (long-form, 3–20 min, 16:9). Where long-form pays.
-**Secondary: Facebook** (feed video, 16:9). Where the older audience is, and where competition is thin.
+We're not first. SafetyCulture has a $2B+ valuation, ~100k+ paying customers. Fluix is mature. JotForm has a form builder + signatures.
 
-**Not** TikTok / Reels / Shorts — those need vertical 9:16 ≤ 60s, which is a different product. Possible later, not Phase 1.
+What's actually defensible, ranked:
 
-Posting is **manual**: download MP4, upload via the platform's UI. Auto-post is deferred until we know the videos are worth posting.
+1. **AI paper-to-digital that genuinely works.** The incumbents use 2018-era OCR. We use multimodal Claude. The gap is real now and will narrow over 18 months. We have to be 10× better while it's open.
+2. **Time-to-first-form.** Sign up → first completed form in under 30 minutes. Incumbents take days because of manual form-building. We can collapse that to one upload + a 5-minute review.
+3. **Per-industry templates as a network effect.** Once 50 construction companies use us, our construction template library is the best in the market. Same in oil&gas, HVAC, etc.
+4. **Compliance posture.** Audit log + signature integrity + RLS isolation isn't differentiating, but lacking any of them is disqualifying. We have to ship them as table stakes.
 
-### Monetization thresholds — why length is the single biggest revenue lever
+What is **not** a moat: the form builder UX (everyone has one), the mobile app (everyone has one), e-signatures (commodity).
 
-Both platforms gate ad placement on video length. These are not soft preferences; they are hard rules in the platforms' Partner Program docs:
+---
 
-| Length | YouTube | Facebook |
+## 4. Initial niche — wedge then expand
+
+The product is industry-agnostic by design, but we **launch into ONE industry** to build the template library and the case-study portfolio. Recommendations, in order of preference:
+
+| Industry | Why | Avg. willingness to pay |
 |---|---|---|
-| < 1 min | No ads (Shorts only — different program) | No in-stream ads |
-| 1–2 min | One pre-roll only | No in-stream ads |
-| 3–7 min | One pre-roll only | In-stream ads enabled |
-| **≥ 8 min** | **Mid-roll ads unlocked** (multiple breaks) | In-stream ads enabled |
-| 10–15 min | Sweet spot — most ad revenue per video while retention holds | Same |
+| **Construction / contractors** | Broadest market, most existing-paper-form pain, easiest to find pilot customers | $30–80/user/mo |
+| **Oil & gas / utilities field crews** | Highest regulatory burden (OSHA, DOT, EPA forms), highest willingness to pay | $80–200/user/mo |
+| **HVAC / plumbing / electrical** | Service tickets + permit forms; high turnover means easy onboarding | $25–60/user/mo |
+| **Manufacturing QC** | Heavy paper checklist culture, ISO/AS9100 audit requirements | $50–150/user/mo |
+| **Transportation / fleet (DVIR)** | DOT-required daily forms; clear regulatory anchor | $20–50/user/mo |
 
-Mid-roll ads are where YouTube ad revenue actually lives. A 7-minute video gets one ad slot; an 8-minute video gets three or four. The cliff at 8 min is the single biggest revenue lever in long-form YouTube.
-
-Eligibility (separate from per-video length rules):
-
-- **YouTube Partner Program**: 1,000 subscribers + 4,000 watch hours over 12 months
-- **Facebook In-Stream Ads**: 5,000 page followers + 60,000 minutes viewed over 60 days
-
-**Implication for the app**: default `target_duration_sec` is 600 (10 min), which sits in the YouTube mid-roll sweet spot. The character-form slider visually marks the zones — red < 3 min (unmonetizable), amber 3–7 (single pre-roll only), green ≥ 8 (mid-roll unlocked) — so the creator never accidentally targets a length that can't earn.
+Default starting wedge: **construction**. Largest pool of small operators, easiest cold outreach, most existing relationships you can tap.
 
 ---
 
 ## 5. Positioning
 
-This is not a SaaS, not a creator tool, not a marketplace. It's **the founder's content factory**. Single deployment, single user, single character (or two), single editor (you).
+**Not** a form builder. **Not** an e-signature tool. **Not** an inspection app.
 
-If we ever decide to flip it to multi-user, the architecture supports that pivot — the `user_id` columns are still there, just constant. Re-enable RLS, swap the password gate for Supabase auth, add Stripe — none of which is built today.
+A **field operations platform** that turns paper into compliant digital workflows in minutes.
+
+The category we want to own: *AI-native field forms.*
 
 ---
 
 ## 6. Phases
 
-### Phase 0 — prove the comedy at length (Weeks 1–2)
+### Phase 0 — validate the wedge (Weeks 1–2)
 
-Before any video render, validate that Claude can write a 10-minute comedy script that holds together. Run `npm run smoke:script` against a fixture persona with 5 different topics. Read the output out loud. Score each 1–5 for "would I watch this all the way through." Iterate the prompt until ≥40% score 4+.
+Before paying customers, prove the thing that has to be true: **AI paper-to-digital actually produces a usable form schema.**
 
-If we can't write a watchable text script, the video will be worse. No video render until the script lands.
+- Collect 20 real paper forms from real industries (construction safety, HVAC service tickets, DVIR, etc. — Google Images + form-supply websites).
+- Run each through the import pipeline. Score 1–5 on: did it identify all fields? Field types correct? Sections preserved? Required fields flagged?
+- Iterate the prompt until ≥80% of forms come back with a schema that needs only minor cleanup (not a full rebuild).
 
-### Phase 1 — first finished video (Weeks 3–6)
+If <80%, the wedge isn't real yet — tune before building anything else.
 
-End-to-end pipeline: script → voice → HeyGen video → manual upload. One character, one user, no analytics, no editing.
+### Phase 1 — paid MVP (Weeks 3–10)
 
-Stack:
+End-to-end SaaS for one customer per industry:
 
-- Next.js (App Router) on Railway
-- Supabase (Postgres + Storage)
-- Anthropic Claude (Opus 4.7, adaptive thinking, cached persona prefix)
-- ElevenLabs (voice synthesis, curated preset voices)
-- HeyGen V2 (Photo Avatar talking-head, supports long-form)
-- Single-password gate (no Stripe, no Supabase auth)
+- Multi-tenant: org sign-up, member invites, role-based access
+- Form builder (visual, JSON schema underneath)
+- AI paper-to-digital import
+- Form completion on web (mobile-responsive, no native app yet)
+- Photo upload, GPS capture, signature pad
+- Compliant signatures with full audit trail
+- Submissions list + PDF export
+- Audit log readable by admins
+- Stripe billing per-user / per-month
 
-What's deferred to Phase 2:
+Deferred to Phase 2:
 
-- B-roll / scene cuts (would require an FFmpeg pipeline + asset library)
-- Captions / on-screen text
-- Background music
-- Direct upload to YouTube / Facebook
-- Multi-character scenes
+- Native iOS / Android apps
+- Offline mode (PWA cache)
+- Multi-step / multi-signer workflows
+- Conditional logic
+- API + webhooks
+- Custom branding / white-label
+- SOC2 / 21 CFR Part 11 / eIDAS certifications
 
-### Phase 2 — polish (Month 3+)
+### Phase 2 — what wins enterprise (Month 4+)
 
-Only if Phase 1 produces videos with >40% audience retention at 5 minutes. At that point:
-
-- B-roll insertion via stock footage APIs (Pexels, Storyblocks)
-- Burned-in captions for accessibility / autoplay
-- Background music (suno.com or Mubert)
-- Direct YouTube upload via the Data API
-- Multi-character scenes (would force a rethink of the video provider — HeyGen handles 1 avatar per render)
+Only build after Phase 1 has 20 paying customers across 2 industries. At that point: enterprise-readiness investments (SOC2, native mobile, offline) earn their cost.
 
 ---
 
-## 7. Character spec
+## 7. Security architecture — the table stakes
+
+Lacking any of these is disqualifying for the kinds of businesses we want as customers. None are differentiating; all are required.
+
+### 7.1 Tenant isolation
+
+- Every business is an `org`. Every form, submission, file, audit log row is scoped to an `org_id`.
+- Postgres **Row Level Security** is the primary isolation layer. Every table that contains tenant data has an RLS policy keyed on `auth.uid() ∈ (members of org)`.
+- The service-role key is used only in two contexts: (a) server-side actions that have already verified org membership for the requesting user, (b) the audit-log writer.
+- Cross-tenant data leakage is the only Sev-1 bug class. We test for it explicitly.
+
+### 7.2 Identity
+
+- Email + password (Supabase auth) by default.
+- TOTP 2FA optional in Phase 1, mandatory for admin roles.
+- SSO (Google Workspace, Microsoft 365, SAML for enterprise) in Phase 2.
+- Session timeout configurable per-org (default 12 hrs; some industrial customers need 1 hr).
+
+### 7.3 Roles
+
+| Role | What they can do |
+|---|---|
+| **Owner** | Everything. Can transfer ownership. Cannot be deleted by a non-owner. |
+| **Admin** | Manage users, forms, billing. Cannot delete the org. |
+| **Member** | Complete forms, view their own submissions, view forms shared with them. |
+| **Viewer** | Read-only on submissions assigned to them. (Phase 2 — for clients/auditors.) |
+
+### 7.4 Compliant electronic signatures
+
+A signature is not just an image of a name. To be defensible under 21 CFR Part 11 / eIDAS / ESIGN Act, every signature record stores:
+
+- Signer's verified user_id
+- Signer's full name and email at time of signing
+- ISO 8601 timestamp
+- IP address
+- Geolocation (if mobile and permission granted)
+- The full submission data being signed
+- A cryptographic hash (SHA-256) of the submission data + user_id + timestamp — so any tampering with the form contents after signing invalidates the signature
+- Signature image (canvas drawing or typed name)
+
+The audit trail for any submission can be exported as a PDF at any time and is admissible as evidence.
+
+### 7.5 Audit logs
+
+Every consequential action writes to `audit_logs`:
+
+- form created / edited / deleted / archived
+- submission created / completed / signed
+- user invited / role changed / removed
+- form imported (with the source filename)
+- export (someone downloaded a PDF / CSV)
+- failed login attempts (for security investigations)
+
+Audit log is append-only at the DB level. Admins can read their org's audit log; nobody can modify or delete entries.
+
+### 7.6 Encryption + transport
+
+- TLS 1.3 in transit (managed by Railway + Cloudflare)
+- AES-256 at rest (managed by Supabase)
+- File uploads (photos, paper forms) stored in Supabase Storage; per-org buckets with policy-gated access
+
+### 7.7 Data residency + retention
+
+- Default: data stored in the customer's chosen region (US / EU). Phase 2 enterprise feature.
+- Retention configurable per-org. Default: forever for completed submissions; drafts purged after 30 days.
+
+---
+
+## 8. Form schema spec
+
+Forms are JSON. The shape:
 
 ```json
 {
   "id": "...",
-  "name": "Tom",
-  "reference_image_url": "heygen://<avatar_id>",
-  "voice": {
-    "provider": "elevenlabs",
-    "voice_id": "...",
-    "stability": 0.5,
-    "similarity_boost": 0.75
-  },
-  "persona": {
-    "one_liner": "Snarky tech analyst who's seen it all",
-    "perspective": "...",
-    "delivery": "deadpan",
-    "vocabulary_hits": ["actually", "look"],
-    "avoided_phrases": ["folks", "amazing"],
-    "audience": "tech-adjacent millennials"
-  },
-  "format": {
-    "aspect_ratio": "16:9",
-    "target_duration_sec": 600
-  }
+  "name": "Daily site safety inspection",
+  "description": "...",
+  "version": 3,
+  "sections": [
+    {
+      "id": "s1",
+      "title": "Site information",
+      "fields": [
+        { "id": "f1", "type": "text", "label": "Site name", "required": true },
+        { "id": "f2", "type": "date", "label": "Inspection date", "required": true, "default": "today" },
+        { "id": "f3", "type": "gps", "label": "Site location", "auto": true }
+      ]
+    },
+    {
+      "id": "s2",
+      "title": "Hazards",
+      "fields": [
+        { "id": "f4", "type": "checkbox", "label": "Are all guardrails in place?", "required": true },
+        { "id": "f5", "type": "photo", "label": "Photos of any hazards", "multiple": true, "max": 10 }
+      ]
+    },
+    {
+      "id": "s3",
+      "title": "Sign-off",
+      "fields": [
+        { "id": "f6", "type": "signature", "label": "Foreman signature", "required": true, "signer_role": "foreman" },
+        { "id": "f7", "type": "signature", "label": "Safety officer signature", "required": true, "signer_role": "safety_officer" }
+      ]
+    }
+  ]
 }
 ```
 
-Note `reference_image_url` uses a `heygen://<avatar_id>` URL scheme. The user creates the Photo Avatar manually in the HeyGen dashboard from a still image, then pastes the avatar_id into the character form. We don't try to magic-create avatars from arbitrary URLs — HeyGen's avatar onboarding has its own UX and rules.
+Field types (Phase 1):
+
+`text` · `textarea` · `number` · `date` · `datetime` · `dropdown` · `multi_select` · `checkbox` · `radio` · `photo` · `signature` · `gps` · `timestamp` · `section_header` · `divider`
+
+Field types (Phase 2):
+
+`conditional` (show/hide based on another field) · `formula` (computed) · `file` (PDF upload) · `barcode` · `lookup` (linked to another submission)
 
 ---
 
-## 7b. Review pipeline — the six agents
+## 9. Pricing
 
-Every script passes through six parallel Claude-backed review agents before voice or video render. The pipeline exists for two reasons: protect monetization (don't burn $5 of HeyGen render on a script YouTube will demonetize), and stop "AI-shaped" comedy from leaking through (the structural-but-not-funny output that LLMs default to).
+Per-user, per-month. The category benchmark.
 
-| Agent | What it catches | Failure mode |
+| Tier | Price | What you get |
 |---|---|---|
-| **Monetization compliance** | YouTube advertiser-unfriendly content — profanity intensity, sensitive-topic categories, harmful claims, copyrighted material | **Hard gate.** Any `critical` issue blocks the render; the user is forced to regenerate. |
-| **Hook strength** | First 30 sec earn the rest. Hollow openers like "Hey guys" or "Today we're going to talk about." | Soft gate. Surfaces issue + suggestion. User decides. |
-| **Persona fit** | Drift from the character — generic-AI register, banned phrases, tone shift mid-script | Soft gate. |
-| **Comedy lands** | Specific punches, escalation, callbacks — vs. comedy-shaped filler ("absolutely wild and frankly insane", hollow tricolons, "and then I realized…") | Soft gate. |
-| **Length & pacing** | Hits target duration at ~150 wpm; segments balanced; no runtime holes | Soft gate. Critical if predicted runtime drops below the 8-min YouTube mid-roll cliff (§4). |
-| **Fact-check surface** | Identifies claims to verify (specific numbers, named events with dates, quotes, health/finance). Doesn't auto-fact-check — surfaces them. | Soft gate. |
+| **Trial** | Free, 14 days | 3 users, 5 forms, AI import 5 forms |
+| **Starter** | $19 / user / mo | Up to 10 users, unlimited forms, unlimited submissions, AI import 20 / mo |
+| **Pro** | $39 / user / mo | Up to 50 users, unlimited AI import, audit log export, multi-signer workflows |
+| **Enterprise** | Custom | SSO, custom retention, dedicated region, SLA, SOC2 compliance docs |
 
-All six run **in parallel** against the generated script. The Claude calls share a `cache_control` prefix (persona + script) so the second through sixth reviewers cost ~10% of the first. Total: ~10 sec wall-clock, ~$0.60.
-
-**Gate logic:**
-
-- Any `monetization` issue with `severity: "critical"` → `monetization_blocked: true`. The pipeline auto-regenerates **once** with feedback synthesized from the failed agents. If still blocked, surfaces to the user — no render until they fix it.
-- All scores ≥ 7 and no monetization block → `overall_pass: true`. UI shows the green-light state. One click to continue.
-- Anything in between → `overall_pass: false` but not blocked. UI shows the scorecard with issues; user reads, optionally types creator feedback, hits *Regenerate* or *Approve anyway*.
-
-**Why human-in-the-loop, not full auto:**
-
-Per §1: creator does taste, system does production. The agents are an *assist*, not a substitute for the editor. Full-auto regeneration on every soft fail would cause the writer to thrash on subjective notes — the user is the final taste arbiter, especially on comedy where what an LLM thinks is "funnier" often isn't.
-
-**Three escape hatches when you disagree with the agents:**
-
-| Path | Cost | When to use |
-|---|---|---|
-| **Approve anyway** | $0 | Soft-fail issues you've judged are wrong (taste is yours) |
-| **Edit script inline** | ~$0.60 (re-review only) | The 5% the agents missed — fix one sentence yourself, save, agents re-score the edited version. No regen, no script-gen call. |
-| **Regenerate** | ~$1 (script + 6 reviews) | You want a different draft entirely. Optional creator feedback is merged with agent feedback. |
-
-The inline editor preserves your hand-edits verbatim and recomputes `estimated_seconds` from word count at 150 wpm so the pacing agent and chapter-timestamp math stay honest.
-
-## 7c. Upload-prep agent (the 7th)
-
-A separate generator agent runs **after the user approves the script**, before voice/video render. It produces the YouTube + Facebook metadata pack that the creator copies straight into the platform's upload form:
-
-| Field | Purpose | Constraints |
-|---|---|---|
-| YouTube title | The clickable headline | 10–100 chars; no clickbait the video doesn't deliver on |
-| YouTube description | First 150 chars are SEO + above the "more" cutoff; rest is context + chapters + hashtags | ≤5000 chars |
-| YouTube tags | Mix of broad and specific | ≤25 tags, ≤500 total chars |
-| YouTube chapters | First chapter MUST start at 0:00, ≥10s spacing — YouTube auto-creates clickable chapters from this exact format | 3–15 chapters, computed proportionally to segment word counts at 150 wpm |
-| Thumbnail concepts | 3 distinct visual briefs + text overlays — input for whichever thumbnail tool the creator uses (Canva, Figma, Midjourney) | Exactly 3 concepts, ≤40 chars per overlay |
-| Facebook caption | Facebook prefers conversation-starters, not SEO-heavy descriptions; aggressive truncation at ~280 chars | ≤280 chars |
-
-Runs in `runRenderPhase`, BEFORE voicing, so a failure here surfaces immediately rather than after a 5-min HeyGen render. Cost ~$0.05, runtime ~5s. Output saved to `clips.upload_pack` jsonb. The Generate page renders it as a copy-button panel below the finished video.
-
-Per BIBLE §15: this is the agent that closes the workflow leak — every uploaded video now has a metadata pack that took 30 seconds to generate instead of 5 minutes to write by hand.
-
-## 8. Generation pipeline
-
-```
-Topic
-  │
-  ▼
-Claude (script, ~30 sec, ~$0.10)
-  │ produces hook + 3-6 segments + outro, ~1500 words for 10 min
-  ▼
-6 review agents in parallel (~10 sec, ~$0.60)
-  │ monetization · hook · persona · comedy · pacing · facts
-  ▼
-[gate]
-  │   monetization_blocked → auto-regen once → re-review
-  │   overall_pass         → ready for human approval
-  │   soft fails           → surface scorecard; user reads
-  ▼
-[user clicks Approve & render]
-  │
-  ▼
-Upload-prep agent (~5 sec, ~$0.05)
-  │ produces title, description, tags, chapters, 3 thumbnail concepts,
-  │ Facebook caption — saved to clips.upload_pack
-  ▼
-ElevenLabs (voice, ~30 sec, ~$0.30)
-  │ MP3 of the full script
-  ▼
-Supabase Storage (audio_url)
-  │
-  ▼
-HeyGen render kicked off (async)
-  │ video provider returns a job_id; we persist it
-  ▼
-[gap of 5-15 min while HeyGen renders]
-  │
-  ▼
-/api/jobs/poll detects completion
-  │ fetches MP4, mirrors to Supabase Storage
-  ▼
-clip.status = 'done', video_url populated
-  │
-  ▼
-Library — download, upload to YouTube
-```
-
-**Total**: ~1 min for script + review, then 5–15 min for the video render. ~$4–9 of API spend per 10-min video (HeyGen dominates; review pipeline adds ~$0.60).
-
----
-
-## 9. No pricing — solo deployment
-
-This is a personal tool. You pay the API providers directly. Estimated monthly cost for 30 videos/month:
-
-- Anthropic: ~$3
-- ElevenLabs: $22 starter plan covers it
-- HeyGen: ~$200–300 depending on plan
-- Supabase + Railway: free tier suffices
-
-So roughly **$8–10 per finished 10-minute video**, plus the ElevenLabs base.
-
-If you ever flip to multi-user, see v1 BIBLE.md (`_archive/v1-creatoros-ai/`) for credit-based pricing logic.
+Starter is priced under SafetyCulture's lite tier (~$24/user). Pro is competitive with Fluix. Both undercut the high end on features they care about.
 
 ---
 
 ## 10. Architecture — Phase 1
 
 ```
-┌──────────────────────────────────────────────────┐
-│             Next.js (Railway)                    │
-│  /character  /generate  /library  /login         │
-└────────┬─────────────────────────────────────────┘
-         │ APP_PASSWORD cookie gate
-         ▼
-┌──────────────────────────────────────────────────┐
-│             Next.js API routes                   │
-│  /character    /generate   /clips/[id]           │
-│  /jobs/poll    /auth       /health               │
-└────┬───────────┬──────────────┬──────────────────┘
-     │           │              │
-     ▼           ▼              ▼
-┌─────────┐ ┌─────────┐ ┌─────────────────────┐
-│Supabase │ │ Claude  │ │  Video provider     │
-│Postgres │ │ Eleven  │ │  · HeyGen (default) │
-│Storage  │ │ Labs    │ │  · Hedra (swap-in)  │
-└─────────┘ └─────────┘ └─────────────────────┘
+┌──────────────────────────────────────────────┐
+│            Next.js (Railway)                 │
+│  /forms · /submissions · /settings · /audit  │
+└────────────┬─────────────────────────────────┘
+             │
+             ▼
+┌──────────────────────────────────────────────┐
+│         Next.js API routes                   │
+│  /forms · /forms/import · /submissions       │
+│  /signatures · /audit · /invites             │
+└─────┬─────────────┬─────────────┬────────────┘
+      │             │             │
+      ▼             ▼             ▼
+┌──────────┐ ┌─────────────┐ ┌──────────────┐
+│ Supabase │ │ Claude      │ │ Stripe       │
+│ Postgres │ │ (multimodal │ │ (per-user/mo │
+│ Auth     │ │  vision for │ │  billing)    │
+│ Storage  │ │ paper→form) │ │              │
+└──────────┘ └─────────────┘ └──────────────┘
 ```
 
-**Database tables:**
+**Key tables:**
 
-- `characters` — your AI persona(s)
-- `clips` — every generation, with `status` (queued | scripting | voicing | rendering | done | failed) and `provider_job_id`
+- `orgs` — businesses
+- `memberships` — user ↔ org with role
+- `invites` — pending invitations (email, role, token)
+- `forms` — current form templates
+- `form_versions` — immutable history of every form schema
+- `submissions` — completed/in-progress form fills
+- `submission_signatures` — one row per signature with full audit trail
+- `audit_logs` — append-only consequential events
+- Supabase Storage buckets — `form-photos`, `form-paper-imports`, `signatures`
 
-No `users` table — single-user, gated by middleware.
-No `subscriptions` table — no billing.
+**RLS everywhere.** No table that holds tenant data is readable without a verified org membership claim.
 
-**Async pattern**: HeyGen render is 5–15 min. We persist `provider_job_id`, and `/api/jobs/poll` (cron-driven) walks every `clips.status='rendering'` row and asks the provider whether it's done.
+**Environment variables:**
 
-**Provider abstraction**: `src/lib/providers/video.ts` defines a single `VideoProvider` interface. HeyGen is the implementation; Hedra can be added the same way. `VIDEO_PROVIDER` env var picks one.
+```
+ANTHROPIC_API_KEY=
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+STRIPE_PRICE_STARTER=
+STRIPE_PRICE_PRO=
+```
 
 ---
 
-## 11. User flow
+## 11. User flow — Phase 1
 
-1. **Sign in.** Single password page. Cookie set for 30 days.
-2. **Set up character (~5 min, one-time).** Create a HeyGen Photo Avatar in the HeyGen dashboard → paste its avatar_id. Pick a voice from the curated ElevenLabs list. Pick aspect (16:9 default). Pick target length (8 min default). Write a one-liner persona + a 100-word perspective + vocabulary lists + audience.
-3. **Generate.** Type a topic. Click. Status updates: *Writing script → Recording voice → Rendering video*. Total 5–15 min wall-clock.
-4. **Review.** Video plays inline at 16:9. Three buttons: **Download MP4**, **Library**, **Generate another**.
-5. **Upload manually** to YouTube / Facebook.
+1. **Sign up.** Email + password. Auto-creates an `org` with the signer as Owner.
+2. **Invite teammates.** Owner sends invite emails; recipients set their own password and join the org.
+3. **Create a form.** Two paths:
+   - **Drag-and-drop builder** — pick fields, drop them into sections, save.
+   - **Upload paper form** — drag in a PDF or photo. AI returns a draft schema in 15–30 seconds. Owner edits, saves.
+4. **Assign the form** to specific roles or all members.
+5. **A worker fills out the form** on their phone or tablet. Photos uploaded, GPS captured, signature drawn.
+6. **Other signers (if any)** are notified, sign their sections.
+7. **Submission completes** when the last required signature lands. Audit log writes; PDF export available.
+8. **Compliance officer / admin** can search the audit log, export submissions to CSV/PDF, and pull the full chain of custody for any signed form.
 
 ---
 
-## 12. Metrics that matter
+## 12. Distribution
 
-This is a personal tool, not a product, so metrics are about **whether the output is good enough to publish**:
+Three loops, same playbook as any vertical SaaS:
 
-| Metric | Target |
+### Loop 1 — Industry-specific cold outreach
+
+Pick the wedge industry. Pull a list of 1,000 small businesses in that industry (LinkedIn / Apollo / Google Maps scrape). Personalized cold email at the owner / safety manager / ops manager level.
+
+The pitch isn't "we're the best forms platform." It's: *"Bring me 5 of your paper forms; I'll have them digital and on your phone before this call ends."*
+
+The 30-minute live demo where you upload their actual paper form and it digitizes in front of them is the entire sales motion. Anyone who's been quoted a 6-week SafetyCulture implementation will sign on the spot.
+
+### Loop 2 — Industry-specific case studies
+
+For every paying customer in the wedge industry: a documented case study. *"How [company] cut daily inspection time from 25 minutes to 6."* Each case study is a landing page, a LinkedIn post, and an outbound asset.
+
+### Loop 3 — Template library as marketing
+
+Public, searchable library of starter templates per industry. SEO. *"Free OSHA daily safety inspection template — works on iPhone."* Drives bottom-of-funnel signups for "they already had this form anyway."
+
+---
+
+## 13. Metrics that matter
+
+| Metric | Phase 1 target (Month 6) |
 |---|---|
-| Generated videos that you actually upload (vs trash) | >40% |
-| Average watch-through % on published videos | >35% (YouTube average is ~20–30% for long-form) |
-| Time topic → uploaded | <30 min |
-| Cost per uploaded video | <$15 |
+| Paid orgs | 30 |
+| Avg users per org | 5 |
+| Time signup → first completed form | <30 min |
+| AI import success rate (form usable with minor edits) | >80% |
+| Trial → paid conversion | >20% |
+| Net revenue retention | >100% |
+| MRR | $7k+ |
 
-If <40% of generated videos are uploadable after Phase 1, the prompt or the provider are the problem. Tune them, or fall back to shorter formats.
+The leading indicator is **AI import success rate**. If we lose at the wedge, nothing else matters.
 
 ---
 
-## 13. Risks and mitigations
+## 14. Risks and mitigations
 
 | Risk | Mitigation |
 |---|---|
-| 10 min of one AI face is unwatchable | Start at 5–8 min and lengthen only if retention holds. Provider abstraction makes it easy to test HeyGen vs alternatives. |
-| Comedy at length is too hard for the LLM | Phase 0 hand-validation. Don't render videos until the text scripts land. |
-| HeyGen render fails / queue grows / pricing changes | `VideoProvider` interface lets us swap to Hedra, Synthesia, D-ID, or self-hosted (LivePortrait, Hallo) with minimal code change. |
-| Audiences reject AI-presenter content | Lean into it as a feature: the persona is openly fictional. Pick a name, build a public character, let the audience decide. |
-| Misuse: deepfaking real people | The Photo Avatar is created by the user in HeyGen's dashboard, which has its own consent flow. We don't accept arbitrary image URLs into a face-generation pipeline. |
+| AI paper-to-digital is unreliable | Phase 0 hand-validation. If <80% success rate after prompt iteration, niche the wedge to a single form type per industry where we can be 100%. |
+| RLS misconfiguration leaks one tenant's data to another | Automated tests that try cross-tenant reads with every PR. Sev-1 bug class. |
+| Signature challenged in court | Compliant audit trail (§7.4) + SHA-256 of signed data hash. Get a one-time legal review before going to enterprise customers. |
+| SafetyCulture or Fluix copies the AI import wedge | They will. Window is 18 months. We have to be 10× better in that window and win the wedge industries before they react. |
+| One regulated industry has compliance requirements we missed | Don't sell into healthcare, finance, or government in Phase 1 without a compliance officer on payroll. |
+| Stripe disputes from disgruntled trial users | Hard cap trial features. Make cancellation one click. Don't gate cancel behind support. |
 
 ---
 
-## 14. Strategic rules
+## 15. Strategic rules
 
-1. **Output quality > everything.** No new feature ships before Phase 0 hand-validation passes.
-2. **One character, one channel, until it works.** Multi-character is Phase 2.
-3. **Three providers, one DB, one frontend.** Every additional provider is engineering debt.
-4. **Single-user assumption is real.** Don't write code that makes sense only in a multi-user world (per-org analytics, sharing, invites). Strip it whenever you see it.
-5. **Manual upload is fine.** Auto-upload to YouTube / Facebook is Phase 2 — and only if you're confident enough in the output to want it on a daily cadence.
-6. **The persona is the brand.** You're the editor. The character is the talent.
+1. **Security is table stakes, not a feature.** RLS everywhere. Audit log on by default. Signatures hashed on write.
+2. **The wedge is paper-to-digital.** Every release should make it more reliable, not add unrelated features.
+3. **Industry-agnostic engine, industry-specific go-to-market.** Same product, different sales motion per vertical.
+4. **One industry until $20k MRR.** Then the second.
+5. **No Phase 2 features in Phase 1.** Multi-step signers, offline, native apps, conditional logic — all wait until 20 paying orgs are using the basics.
+6. **Pricing is per-user, monthly.** No "unlimited" plans that get gamed.
+7. **Don't sell into healthcare/finance/government** without a compliance hire.
 
 ---
 
-*v2 is opinionated and scoped to a real, single user. Disagreement on any specific call is welcome — the document exists to be argued with.*
+*v1 is opinionated by design. Disagreement on any specific call is welcome — the document exists to be argued with.*

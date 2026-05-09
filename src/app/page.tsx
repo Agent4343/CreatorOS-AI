@@ -1,79 +1,64 @@
-import { cookies } from "next/headers";
-
-export default async function Home() {
-  const c = await cookies();
-  const signedIn = !!c.get("reel_auth")?.value;
-
+export default function Home() {
   return (
     <div className="space-y-12">
       <section>
         <h1 className="text-5xl font-bold leading-tight tracking-tight">
-          Type a topic.
+          Paper forms,
           <br />
-          Get a long-form video.
+          digital in 30 seconds.
           <br />
-          <span className="text-accent">Starring the same AI character every time.</span>
+          <span className="text-accent">Signed, audited, on every device.</span>
         </h1>
         <p className="mt-6 max-w-2xl text-lg text-ink/80">
-          Single-user comedy video factory. Set up a recurring AI character
-          once — name, face, voice, comedic point of view. Then type a topic
-          and get back a 5–15 minute video for YouTube or Facebook. Manual
-          download, manual upload — for now.
+          Upload a paper inspection sheet, safety checklist, or service ticket.
+          Our AI converts it into a working digital form. Your team completes
+          it on phone or tablet — with photos, GPS, and compliant electronic
+          signatures backed by a tamper-evident audit trail.
         </p>
         <div className="mt-8 flex gap-3">
           <a
-            href={signedIn ? "/generate" : "/login"}
+            href="/login?next=/onboarding"
             className="rounded-md bg-ink px-5 py-3 text-sm font-medium text-bg no-underline hover:bg-accent"
           >
-            {signedIn ? "Open the app" : "Sign in"}
+            Start free trial
+          </a>
+          <a
+            href="#how"
+            className="rounded-md border border-ink/20 px-5 py-3 text-sm font-medium text-ink no-underline"
+          >
+            How it works
           </a>
         </div>
       </section>
 
-      <section className="grid gap-8 md:grid-cols-3">
+      <section id="how" className="grid gap-8 md:grid-cols-3">
         <Card
           n="1"
-          title="Set up your character"
-          body="Create a Photo Avatar in HeyGen, paste its avatar_id, pick a voice from ElevenLabs, write a 100-word persona. Five minutes, one time."
+          title="Sign up your business"
+          body="Each business gets its own isolated workspace. Invite your team and assign roles (owner / admin / member). Trial is free for 14 days, no card."
         />
         <Card
           n="2"
-          title="Type a topic"
-          body='"Why every founder pretends to like their investors." Whatever you want a 10-minute monologue on.'
+          title="Bring your forms"
+          body="Drag in a PDF or photo of your existing paper form. AI returns a working digital form schema in seconds. Edit anything you want, save."
         />
         <Card
           n="3"
-          title="Wait 5–15 minutes"
-          body="Claude writes the long-form script. ElevenLabs voices it. HeyGen renders the video. 16:9 MP4 lands in your library, ready to upload."
+          title="Field-ready, audit-ready"
+          body="Workers fill out forms on phone or tablet — photos, GPS, signatures. Every signature stamped with timestamp, IP, geolocation, and a SHA-256 hash of the data signed. Tamper-evident, defensible."
         />
       </section>
 
       <section className="rounded-lg border border-ink/15 bg-white p-6">
-        <h2 className="text-xl font-bold">What this is — and isn't</h2>
-        <div className="mt-3 grid gap-4 md:grid-cols-2">
-          <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">
-              What it does
-            </h3>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink/80">
-              <li>Long-form (3–20 min) AI presenter videos</li>
-              <li>16:9 horizontal (YouTube / Facebook feed) by default</li>
-              <li>Recurring character anchors your channel's identity</li>
-              <li>Topic → finished MP4 in 5–15 min</li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">
-              What it doesn't do (yet)
-            </h3>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink/80">
-              <li>No b-roll, no scene cuts — straight talking head</li>
-              <li>No music or VFX</li>
-              <li>No automated posting — manual upload to YouTube / Facebook</li>
-              <li>Not a deepfake tool — characters are clearly AI</li>
-            </ul>
-          </div>
-        </div>
+        <h2 className="text-xl font-bold">Built security-first</h2>
+        <ul className="mt-3 grid gap-2 text-sm text-ink/80 md:grid-cols-2">
+          <li>• Postgres Row Level Security on every tenant table — zero cross-tenant data exposure by design</li>
+          <li>• Append-only audit log of every consequential action</li>
+          <li>• SHA-256 integrity hash on every signature — tamper-evident under 21 CFR Part 11 / eIDAS / ESIGN</li>
+          <li>• Encrypted in transit (TLS 1.3) and at rest (AES-256)</li>
+          <li>• Role-based access (owner / admin / member / viewer)</li>
+          <li>• Per-org file storage with policy-gated access</li>
+        </ul>
       </section>
     </div>
   );

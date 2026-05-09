@@ -1,58 +1,64 @@
-# Reel — single-user, long-form AI video factory
+# FieldForm — AI-native digital forms for the field
 
-**Working title.** Type a topic, get a 5–15 minute video starring your recurring AI character. Built for one creator. Ships videos to YouTube and Facebook.
+**A SaaS platform for any business that runs work in the field.** Design forms, or upload a paper form and let AI digitize it. Workers complete forms on phone or tablet — with compliant, auditable signatures. Multi-tenant, security-first.
 
 ---
 
 ## What it does
 
-1. **Set up a character once** — paste a HeyGen Photo Avatar ID, pick an ElevenLabs voice, write a 100-word persona ("snarky tech analyst", "tired millennial parent").
-2. **Type a topic** — *"why every founder pretends to like their investors."*
-3. **Wait 5–15 minutes** — Claude writes the long-form script, ElevenLabs voices it, HeyGen renders the video.
-4. **Download & upload** — 16:9 horizontal MP4 ready for YouTube or Facebook.
+1. **Sign up your business** — gets its own isolated workspace.
+2. **Create a form** — drag-and-drop builder, OR upload a paper form / PDF and AI converts it into a digital form schema you can edit.
+3. **Invite your team** — each user has a role (owner / admin / member).
+4. **Workers complete forms in the field** — on phone or tablet, capturing photos, GPS, and compliant electronic signatures.
+5. **Multi-signer flows** — one form, multiple people complete and sign different sections.
+6. **Audit-ready** — every signature is bound to a verified user identity with timestamp, IP, geolocation, and a SHA-256 hash of the signed data.
 
-Same character every video. Different topic each time. ~$3–8 of API spend per 10-minute video.
+Industry-agnostic. Same engine handles construction safety, HVAC service tickets, manufacturing QC, vehicle pre-trip inspections, field clinic intake.
 
-## Single-user
+## The wedge
 
-No signup, no Stripe, no credits. Whole app is gated by an `APP_PASSWORD` env var. One password, one cookie, one user. Want to invite someone later? Re-enable the multi-tenant layer (the `user_id` columns are still there) and switch back to Supabase auth.
+Existing tools (SafetyCulture, Fluix, ProntoForms) all have one painful workflow: **converting a paper form into a digital one is manual and slow.** They use 2018-era OCR + drag-and-drop rebuilding. We use multimodal Claude — upload the paper, get a working form back in 15–30 seconds.
+
+Time-to-first-form: **under 30 minutes from signup**. SafetyCulture takes weeks.
 
 ## Stack
 
-- **Next.js** (App Router) on Railway — long-running Node, no serverless
-- **Supabase** — Postgres + Storage. No Supabase auth (we use a password gate).
-- **Anthropic Claude Opus 4.7** — long-form script generation, adaptive thinking, persona cached behind `cache_control`
-- **ElevenLabs** — voice synthesis (curated preset voices in Phase 1)
-- **HeyGen V2** — Photo Avatar talking-head video, supports long-form
-- Provider abstraction layer (`src/lib/providers/video.ts`) — swap HeyGen for Hedra (short-form ≤90s) or any future provider
+- **Next.js** (App Router) on Railway
+- **Supabase** — Postgres + Auth + Storage. **Row Level Security** on every tenant table.
+- **Anthropic Claude** — multimodal vision for paper-to-digital
+- **Stripe** — per-user/month billing
 
-## Pipeline
+## Security
 
-```
-Topic
-  ──▶ Claude        — script, ~30s, ~$0.10
-  ──▶ ElevenLabs    — voice, ~30s, ~$0.30
-  ──▶ HeyGen        — video, 5-15 min, ~$3-8
-  ──▶ Library
-```
+This is a B2B compliance product, so security isn't a feature; it's the product:
 
-The video render is async. We persist `provider_job_id`, and `/api/jobs/poll` (cron-driven) flips status to `done` when HeyGen reports completion.
+- Row Level Security on every tenant-scoped table; no cross-tenant data leakage by design
+- Email + password auth, optional TOTP 2FA
+- Role-based access (owner / admin / member)
+- Compliant electronic signatures with full audit trail (timestamp, IP, geolocation, SHA-256 hash of the signed data — tamper-evident, defensible under 21 CFR Part 11 / eIDAS / ESIGN)
+- Append-only audit log of every consequential action; admin-readable, not modifiable
+- TLS 1.3 in transit, AES-256 at rest
+
+Full security architecture: see [BIBLE.md §7](./BIBLE.md#7-security-architecture--the-table-stakes).
+
+## Pricing (planned)
+
+| Tier | Price | What you get |
+|---|---|---|
+| Trial | Free 14 days | 3 users, 5 forms, 5 AI imports |
+| Starter | $19 / user / mo | Up to 10 users, unlimited forms |
+| Pro | $39 / user / mo | Up to 50 users, unlimited AI import, audit-log export |
+| Enterprise | Custom | SSO, custom retention, SOC2 compliance docs |
 
 ## Roadmap
 
-- **Phase 0** (Weeks 1–2) — hand-validate the script generator. Run `npm run smoke:script`. Iterate the prompt until ≥40% of generated scripts pass "would I watch all the way through."
-- **Phase 1** (Weeks 3–6) — finished video pipeline. One character, one user, manual upload to YouTube / Facebook.
-- **Phase 2** (Month 3+) — only if Phase 1 outputs pass the bar. B-roll, captions, music, auto-upload.
+- **Phase 0** (Weeks 1–2) — validate AI paper-to-digital hits ≥80% success rate on real-world paper forms. Don't ship anything else until this works.
+- **Phase 1** (Weeks 3–10) — paid MVP with multi-tenant auth, form builder, AI import, mobile-web completion, compliant signatures, audit log, Stripe billing.
+- **Phase 2** (Month 4+) — only after 20 paying orgs across 2 industries. Adds: native apps, offline mode, multi-step signers, conditional logic, SOC2.
 
-## Targets
+## Prior projects in this repo
 
-- **YouTube** (long-form 16:9, 3–20 min) — the primary distribution surface
-- **Facebook** (feed video 16:9) — secondary
-- **Not** TikTok / Reels / Shorts — those are vertical 9:16 ≤60s, a different product. Possible later.
-
-## Prior project
-
-This repo previously held **CreatorOS AI** (long-form text → social posts) and then **Reel v1** (multi-user TikTok-style 30-second clips). Both are preserved at `_archive/v1-creatoros-ai/` and in git history. The current direction (single-user, long-form, YouTube/Facebook) is a clean break.
+This repo previously held two earlier products: **CreatorOS AI** (long-form text → social posts) and **Reel** (AI long-form comedy video factory). Both are preserved at `_archive/` and in git history. The current direction is a clean break.
 
 ---
 

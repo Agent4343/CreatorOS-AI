@@ -8,12 +8,12 @@
 
 html,
 body {
-  background: #fafaf9;
-  color: #0a0a0a;
+  background: #f8fafc;
+  color: #0f172a;
 }
 
 a {
-  color: #e11d48;
+  color: #0284c7;
   text-decoration: underline;
   text-underline-offset: 3px;
 }

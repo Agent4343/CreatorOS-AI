@@ -1,17 +1,21 @@
 import "./globals.css";
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
-import { SignOutButton } from "./SignOutButton";
+import { supabaseAuthed } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
-  title: "Reel — long-form AI comedy video factory",
+  title: "FieldForm — AI-native digital forms for the field",
   description:
-    "Type a topic, get a long-form comedy video starring your recurring AI character.",
+    "Design forms or upload paper ones. Workers complete on phone or tablet with compliant signatures.",
 };
 
-async function isSignedIn(): Promise<boolean> {
-  const c = await cookies();
-  return !!c.get("reel_auth")?.value;
+async function getUser() {
+  try {
+    const sb = await supabaseAuthed();
+    const { data } = await sb.auth.getUser();
+    return data.user;
+  } catch {
+    return null;
+  }
 }
 
 export default async function RootLayout({
@@ -19,33 +23,39 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const signedIn = await isSignedIn();
-
+  const user = await getUser();
   return (
     <html lang="en">
       <body className="min-h-screen font-sans">
-        <div className="mx-auto max-w-5xl px-6 py-8">
-          <header className="mb-12 flex items-baseline justify-between">
+        <div className="mx-auto max-w-6xl px-6 py-6">
+          <header className="mb-10 flex items-baseline justify-between">
             <a
               href="/"
               className="text-2xl font-bold tracking-tight no-underline text-ink"
             >
-              Reel<span className="text-accent">.</span>
+              FieldForm<span className="text-accent">.</span>
             </a>
             <nav className="flex items-baseline gap-6 text-sm">
-              {signedIn && (
+              {user ? (
                 <>
-                  <a href="/generate">Generate</a>
-                  <a href="/library">Library</a>
-                  <a href="/character">Character</a>
-                  <SignOutButton />
+                  <a href="/dashboard">Dashboard</a>
+                  <a href="/forms">Forms</a>
+                  <a href="/submissions">Submissions</a>
+                  <a href="/settings">Settings</a>
+                  <form action="/auth/signout" method="post">
+                    <button type="submit" className="text-xs text-muted underline">
+                      Sign out
+                    </button>
+                  </form>
                 </>
+              ) : (
+                <a href="/login">Sign in</a>
               )}
             </nav>
           </header>
           <main>{children}</main>
           <footer className="mt-24 border-t border-ink/10 pt-6 text-xs text-muted">
-            Reel · v0.2 · Single-user · One topic in. One long-form comedy video out.
+            FieldForm · v0.1 · Multi-tenant · RLS-isolated · Signature audit trail enforced
           </footer>
         </div>
       </body>

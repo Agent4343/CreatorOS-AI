@@ -1,5 +1,5 @@
 {
-  "name": "reel",
+  "name": "fieldform",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "smoke:script": "tsx --env-file-if-exists=.env.local scripts/smoke-script.ts"
+    "smoke:import": "tsx --env-file-if-exists=.env.local scripts/smoke-import.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.88.0",

@@ -1,101 +1,162 @@
 import { z } from "zod";
 
-export const ASPECT_RATIOS = ["9:16", "1:1", "16:9"] as const;
-export type AspectRatio = (typeof ASPECT_RATIOS)[number];
+// ============================================================
+// Form schema — the JSON shape every form is stored as
+// ============================================================
 
-export const DELIVERIES = ["deadpan", "hyped", "exasperated", "wry", "warm"] as const;
-export type Delivery = (typeof DELIVERIES)[number];
-
-export const PersonaSchema = z.object({
-  one_liner: z.string().min(5).max(120),
-  perspective: z.string().min(40).max(800),
-  delivery: z.enum(DELIVERIES),
-  vocabulary_hits: z.array(z.string()).max(20).default([]),
-  avoided_phrases: z.array(z.string()).max(20).default([]),
-  running_jokes: z.array(z.string()).max(10).default([]),
-  audience: z.string().max(200),
-});
-export type Persona = z.infer<typeof PersonaSchema>;
-
-export const CharacterSchema = z.object({
-  id: z.string().uuid(),
-  user_id: z.string().uuid(),
-  name: z.string().min(1).max(60),
-  reference_image_url: z.string(),
-  voice_id: z.string(),
-  voice_provider: z.literal("elevenlabs"),
-  voice_stability: z.number().min(0).max(1).default(0.5),
-  voice_similarity_boost: z.number().min(0).max(1).default(0.75),
-  persona: PersonaSchema,
-  aspect_ratio: z.enum(ASPECT_RATIOS).default("16:9"),
-  target_duration_sec: z.number().int().min(60).max(1200).default(600),
-  created_at: z.string(),
-});
-export type Character = z.infer<typeof CharacterSchema>;
-
-export const CLIP_STATUSES = [
-  "queued",
-  "scripting",
-  "reviewing",
-  "awaiting_approval",
-  "voicing",
-  "rendering",
-  "done",
-  "failed",
+export const FIELD_TYPES = [
+  "text",
+  "textarea",
+  "number",
+  "date",
+  "datetime",
+  "dropdown",
+  "multi_select",
+  "checkbox",
+  "radio",
+  "photo",
+  "signature",
+  "gps",
+  "timestamp",
+  "section_header",
+  "divider",
 ] as const;
-export type ClipStatus = (typeof CLIP_STATUSES)[number];
+export type FieldType = (typeof FIELD_TYPES)[number];
 
-export const ScriptSegmentSchema = z.object({
-  heading: z.string(),
-  body: z.string(),
-});
-export type ScriptSegment = z.infer<typeof ScriptSegmentSchema>;
+export const FormFieldSchema: z.ZodType<FormField> = z.lazy(() =>
+  z.object({
+    id: z.string().min(1),
+    type: z.enum(FIELD_TYPES),
+    label: z.string(),
+    description: z.string().optional(),
+    required: z.boolean().optional(),
+    /** Options for dropdown / multi_select / radio. */
+    options: z.array(z.string()).optional(),
+    /** photo / multi_select. */
+    multiple: z.boolean().optional(),
+    /** photo upload max count. */
+    max: z.number().int().positive().optional(),
+    /** Default value. "today" / "now" handled at render time. */
+    default: z.union([z.string(), z.number(), z.boolean()]).optional(),
+    /** Auto-capture (gps, timestamp). */
+    auto: z.boolean().optional(),
+    /** For signature fields, who is expected to sign. */
+    signer_role: z.string().optional(),
+    /** Display-only fields. */
+    placeholder: z.string().optional(),
+  }),
+);
 
-export const ScriptSchema = z.object({
+export type FormField = {
+  id: string;
+  type: FieldType;
+  label: string;
+  description?: string;
+  required?: boolean;
+  options?: string[];
+  multiple?: boolean;
+  max?: number;
+  default?: string | number | boolean;
+  auto?: boolean;
+  signer_role?: string;
+  placeholder?: string;
+};
+
+export const FormSectionSchema = z.object({
+  id: z.string().min(1),
   title: z.string(),
-  hook: z.string(),
-  segments: z.array(ScriptSegmentSchema).min(1).max(8),
-  outro: z.string(),
-  estimated_seconds: z.number().int().min(60).max(1500),
-  notes: z.string().optional(),
+  description: z.string().optional(),
+  fields: z.array(FormFieldSchema),
 });
-export type Script = z.infer<typeof ScriptSchema>;
+export type FormSection = z.infer<typeof FormSectionSchema>;
 
-export const UploadChapterSchema = z.object({
-  timestamp_sec: z.number().int().min(0),
-  label: z.string().min(1).max(80),
+export const FormDefinitionSchema = z.object({
+  name: z.string().min(1).max(200),
+  description: z.string().max(2000).optional(),
+  sections: z.array(FormSectionSchema).min(1),
 });
-export type UploadChapter = z.infer<typeof UploadChapterSchema>;
+export type FormDefinition = z.infer<typeof FormDefinitionSchema>;
 
-export const ThumbnailConceptSchema = z.object({
-  visual: z.string().min(5),
-  text_overlay: z.string().max(40),
-});
-export type ThumbnailConcept = z.infer<typeof ThumbnailConceptSchema>;
+// ============================================================
+// DB row shapes (loosely typed — Supabase generic schema)
+// ============================================================
 
-export const UploadPackSchema = z.object({
-  youtube_title: z.string().min(10).max(100),
-  youtube_description: z.string().max(5000),
-  youtube_tags: z.array(z.string().min(1).max(40)).max(25),
-  youtube_chapters: z.array(UploadChapterSchema).min(3).max(15),
-  thumbnail_concepts: z.array(ThumbnailConceptSchema).length(3),
-  facebook_caption: z.string().max(280),
-});
-export type UploadPack = z.infer<typeof UploadPackSchema>;
+export type Org = {
+  id: string;
+  name: string;
+  plan: "trial" | "starter" | "pro" | "enterprise";
+  trial_ends_at: string | null;
+  created_at: string;
+};
 
-export const ClipSchema = z.object({
-  id: z.string().uuid(),
-  user_id: z.string().uuid(),
-  character_id: z.string().uuid(),
-  topic: z.string(),
-  status: z.enum(CLIP_STATUSES),
-  script: ScriptSchema.nullable(),
-  upload_pack: UploadPackSchema.nullable(),
-  audio_url: z.string().url().nullable(),
-  video_url: z.string().url().nullable(),
-  provider_job_id: z.string().nullable(),
-  error: z.string().nullable(),
-  created_at: z.string(),
-  completed_at: z.string().nullable(),
-});
-export type Clip = z.infer<typeof ClipSchema>;
+export type OrgRole = "owner" | "admin" | "member" | "viewer";
+
+export type Membership = {
+  id: string;
+  org_id: string;
+  user_id: string;
+  role: OrgRole;
+  full_name: string | null;
+  created_at: string;
+};
+
+export type Form = {
+  id: string;
+  org_id: string;
+  name: string;
+  description: string | null;
+  schema: FormDefinition;
+  current_version: number;
+  archived: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SubmissionStatus =
+  | "in_progress"
+  | "awaiting_signature"
+  | "completed"
+  | "rejected";
+
+export type Submission = {
+  id: string;
+  org_id: string;
+  form_id: string;
+  form_version_id: string;
+  status: SubmissionStatus;
+  data: Record<string, unknown>;
+  started_by: string;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SignatureRow = {
+  id: string;
+  submission_id: string;
+  org_id: string;
+  field_id: string;
+  signer_user_id: string;
+  signer_name: string;
+  signer_email: string;
+  signature_image: string;
+  signed_at: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  geolocation: { lat: number; lng: number; accuracy?: number } | null;
+  data_hash: string;
+};
+
+export type AuditLog = {
+  id: string;
+  org_id: string;
+  actor_user_id: string | null;
+  action: string;
+  resource_type: string;
+  resource_id: string | null;
+  metadata: Record<string, unknown>;
+  ip_address: string | null;
+  user_agent: string | null;
+  created_at: string;
+};
