@@ -3,6 +3,16 @@ import { requireUser } from "@/lib/auth";
 import { listUserOrgs } from "@/lib/orgs";
 import { supabaseService } from "@/lib/supabase/server";
 import type { AuditLog, Membership } from "@/lib/types";
+import InviteSection from "./InviteSection";
+
+type PendingInvite = {
+  id: string;
+  email: string;
+  role: "admin" | "member" | "viewer";
+  token: string;
+  expires_at: string;
+  created_at: string;
+};
 
 export default async function SettingsPage() {
   const user = await requireUser();
@@ -18,8 +28,17 @@ export default async function SettingsPage() {
     .eq("org_id", org.id)
     .order("created_at", { ascending: true });
 
+  let pendingInvites: PendingInvite[] = [];
   let audit: AuditLog[] = [];
   if (isAdmin) {
+    const { data: invs } = await sb
+      .from("invites")
+      .select("id, email, role, token, expires_at, created_at")
+      .eq("org_id", org.id)
+      .is("accepted_at", null)
+      .order("created_at", { ascending: false });
+    pendingInvites = (invs ?? []) as PendingInvite[];
+
     const { data } = await sb
       .from("audit_logs")
       .select("*")
@@ -39,11 +58,7 @@ export default async function SettingsPage() {
       </div>
 
       <section className="rounded-lg border border-ink/15 bg-white p-5">
-        <h2 className="text-lg font-bold">Team</h2>
-        <p className="mt-1 text-sm text-muted">
-          Invites are not wired in this build — coming next. Members today
-          can be added via Supabase auth + a manual memberships row.
-        </p>
+        <h2 className="text-lg font-bold">Members</h2>
         <div className="mt-3 space-y-1">
           {(members as Membership[] | null)?.map((m) => (
             <div
@@ -58,11 +73,14 @@ export default async function SettingsPage() {
       </section>
 
       {isAdmin && (
+        <InviteSection orgId={org.id} initialPending={pendingInvites} />
+      )}
+
+      {isAdmin && (
         <section className="rounded-lg border border-ink/15 bg-white p-5">
           <h2 className="text-lg font-bold">Audit log</h2>
           <p className="mt-1 text-sm text-muted">
-            Append-only record of every consequential action in your
-            workspace. Cannot be modified or deleted.
+            Append-only record of every consequential action. Cannot be modified or deleted.
           </p>
           <div className="mt-3 space-y-1 font-mono text-xs">
             {audit.length === 0 && (
