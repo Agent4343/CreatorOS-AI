@@ -32,6 +32,7 @@ create table if not exists clips (
                       )),
   script              jsonb,
   review_scorecard    jsonb,
+  upload_pack         jsonb,
   audio_url           text,
   video_url           text,
   provider_job_id     text,

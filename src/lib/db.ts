@@ -1,6 +1,6 @@
 import type { ReviewScorecard } from "./agents";
 import { supabaseService } from "./supabase/server";
-import { Character, ClipStatus, Persona, Script } from "./types";
+import { Character, ClipStatus, Persona, Script, UploadPack } from "./types";
 
 // Single-user mode: all rows belong to the same fictitious "owner" user_id.
 // Kept as a column so we can flip back to multi-tenant by setting it from
@@ -80,6 +80,7 @@ export async function updateClip(
   fields: {
     status?: ClipStatus;
     script?: Script | null;
+    upload_pack?: UploadPack | null;
     audio_url?: string | null;
     video_url?: string | null;
     provider_job_id?: string | null;
@@ -100,6 +101,7 @@ type ClipRow = {
   topic: string;
   status: ClipStatus;
   script: Script | null;
+  upload_pack: UploadPack | null;
   audio_url: string | null;
   video_url: string | null;
   provider_job_id: string | null;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { ClipStatus, Script } from "@/lib/types";
+import type { ClipStatus, Script, UploadPack } from "@/lib/types";
 import {
   REVIEW_DIMENSIONS,
   REVIEW_LABELS,
@@ -35,6 +35,7 @@ type ClipShape = {
   topic: string;
   script: Script | null;
   review_scorecard: ReviewScorecard | null;
+  upload_pack: UploadPack | null;
   video_url: string | null;
   error: string | null;
 };
@@ -230,41 +231,41 @@ export default function GenerateForm({
       )}
 
       {clip?.status === "done" && clip.video_url && (
-        <section className="rounded-lg border border-ink/15 bg-white p-4">
-          <video
-            src={clip.video_url}
-            controls
-            className="mx-auto w-full max-w-3xl rounded-md"
-          />
-          <div className="mt-3 flex flex-wrap gap-3">
-            <a
-              href={clip.video_url}
-              download
-              className="rounded-md bg-ink px-4 py-2 text-sm text-bg no-underline"
-            >
-              Download MP4
-            </a>
-            <a
-              href="/library"
-              className="rounded-md border border-ink/20 px-4 py-2 text-sm text-ink no-underline"
-            >
-              View library
-            </a>
-            <button
-              onClick={() => {
-                setClipId(null);
-                setClip(null);
-                setTopic("");
-              }}
-              className="rounded-md border border-ink/20 px-4 py-2 text-sm text-ink"
-            >
-              Generate another
-            </button>
-          </div>
-          <p className="mt-3 text-xs text-muted">
-            Upload to YouTube / Facebook manually for now. Auto-post is Phase 2.
-          </p>
-        </section>
+        <>
+          <section className="rounded-lg border border-ink/15 bg-white p-4">
+            <video
+              src={clip.video_url}
+              controls
+              className="mx-auto w-full max-w-3xl rounded-md"
+            />
+            <div className="mt-3 flex flex-wrap gap-3">
+              <a
+                href={clip.video_url}
+                download
+                className="rounded-md bg-ink px-4 py-2 text-sm text-bg no-underline"
+              >
+                Download MP4
+              </a>
+              <a
+                href="/library"
+                className="rounded-md border border-ink/20 px-4 py-2 text-sm text-ink no-underline"
+              >
+                View library
+              </a>
+              <button
+                onClick={() => {
+                  setClipId(null);
+                  setClip(null);
+                  setTopic("");
+                }}
+                className="rounded-md border border-ink/20 px-4 py-2 text-sm text-ink"
+              >
+                Generate another
+              </button>
+            </div>
+          </section>
+          {clip.upload_pack && <UploadPackPanel pack={clip.upload_pack} />}
+        </>
       )}
 
       {error && (
@@ -441,6 +442,144 @@ function ScoreTile({
       </div>
     </div>
   );
+}
+
+// ---- Upload pack ----
+
+function UploadPackPanel({ pack }: { pack: UploadPack }) {
+  const tagsString = pack.youtube_tags.join(", ");
+  // Build the YouTube description with chapter list appended in the
+  // exact format YouTube uses to auto-create chapters.
+  const chapterList = pack.youtube_chapters
+    .map((c) => `${formatTimestamp(c.timestamp_sec)} ${c.label}`)
+    .join("\n");
+  const fullDescription = `${pack.youtube_description}\n\n${chapterList}`;
+
+  return (
+    <section className="rounded-lg border border-ink/15 bg-white p-4">
+      <h2 className="text-lg font-bold">Upload pack</h2>
+      <p className="mt-1 text-xs text-muted">
+        Copy these into the YouTube and Facebook upload forms. Chapter list
+        is already in YouTube's exact format and will auto-create chapter
+        markers in the player.
+      </p>
+
+      <div className="mt-4 space-y-4">
+        <CopyField label="YouTube title" value={pack.youtube_title} />
+
+        <CopyField
+          label={`YouTube description (paste into the description field — chapters auto-format)`}
+          value={fullDescription}
+          multiline
+          rows={8}
+        />
+
+        <CopyField label="YouTube tags (comma-separated)" value={tagsString} />
+
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted">
+            Chapter timestamps
+          </div>
+          <ul className="mt-2 space-y-1 font-mono text-xs">
+            {pack.youtube_chapters.map((c, i) => (
+              <li key={i}>
+                <span className="inline-block w-12 text-accent">
+                  {formatTimestamp(c.timestamp_sec)}
+                </span>
+                {c.label}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted">
+            Thumbnail concepts
+          </div>
+          <ul className="mt-2 space-y-2">
+            {pack.thumbnail_concepts.map((t, i) => (
+              <li
+                key={i}
+                className="rounded-md border border-ink/15 bg-bg p-3 text-sm"
+              >
+                <div className="font-medium">Concept {i + 1}</div>
+                <div className="mt-1 text-ink/80">{t.visual}</div>
+                <div className="mt-1 font-mono text-xs text-muted">
+                  Text overlay: <span className="text-ink">"{t.text_overlay}"</span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <CopyField
+          label="Facebook caption (≤280 chars — Facebook truncates)"
+          value={pack.facebook_caption}
+          multiline
+          rows={3}
+        />
+      </div>
+    </section>
+  );
+}
+
+function CopyField({
+  label,
+  value,
+  multiline,
+  rows,
+}: {
+  label: string;
+  value: string;
+  multiline?: boolean;
+  rows?: number;
+}) {
+  const [copied, setCopied] = useState(false);
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      /* ignore */
+    }
+  };
+  return (
+    <div>
+      <div className="flex items-baseline justify-between">
+        <label className="text-xs font-semibold uppercase tracking-wider text-muted">
+          {label}
+        </label>
+        <button
+          type="button"
+          onClick={onCopy}
+          className="text-xs text-accent underline"
+        >
+          {copied ? "copied" : "copy"}
+        </button>
+      </div>
+      {multiline ? (
+        <textarea
+          readOnly
+          value={value}
+          rows={rows ?? 4}
+          className="mt-1 w-full rounded-md border border-ink/20 bg-bg p-2 font-mono text-xs"
+        />
+      ) : (
+        <input
+          readOnly
+          value={value}
+          className="mt-1 w-full rounded-md border border-ink/20 bg-bg p-2 font-mono text-xs"
+        />
+      )}
+    </div>
+  );
+}
+
+function formatTimestamp(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
 function AgentDetails({

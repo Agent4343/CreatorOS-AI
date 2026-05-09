@@ -1,4 +1,5 @@
 import { reviewScript, feedbackFromScorecard, ReviewScorecard } from "./agents";
+import { generateUploadPack } from "./agents/uploadPrep";
 import { generateScript, scriptToVoiceText } from "./prompts/script";
 import { synthesizeSpeech } from "./providers/elevenlabs";
 import { videoProvider } from "./providers/video";
@@ -100,6 +101,18 @@ export async function runRenderPhase(args: { clipId: string }): Promise<void> {
   const script = ScriptSchema.parse(clip.script);
 
   try {
+    // Upload-prep first — cheap (~$0.05, ~5s) and saves the metadata
+    // pack so the creator has it ready when the render finishes.
+    // Run before voicing so a failure here surfaces immediately rather
+    // than after a 5-minute render.
+    const uploadPack = await generateUploadPack({
+      persona: c.persona,
+      script,
+      topic: clip.topic,
+      targetDurationSec: c.target_duration_sec,
+    });
+    await updateClip(clip.id, { upload_pack: uploadPack });
+
     await updateClip(clip.id, { status: "voicing" });
     const voiceText = scriptToVoiceText(script);
     const audioBytes = await synthesizeSpeech({

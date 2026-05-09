@@ -191,6 +191,23 @@ All six run **in parallel** against the generated script. The Claude calls share
 
 Per §1: creator does taste, system does production. The agents are an *assist*, not a substitute for the editor. Full-auto regeneration on every soft fail would cause the writer to thrash on subjective notes — the user is the final taste arbiter, especially on comedy where what an LLM thinks is "funnier" often isn't.
 
+## 7c. Upload-prep agent (the 7th)
+
+A separate generator agent runs **after the user approves the script**, before voice/video render. It produces the YouTube + Facebook metadata pack that the creator copies straight into the platform's upload form:
+
+| Field | Purpose | Constraints |
+|---|---|---|
+| YouTube title | The clickable headline | 10–100 chars; no clickbait the video doesn't deliver on |
+| YouTube description | First 150 chars are SEO + above the "more" cutoff; rest is context + chapters + hashtags | ≤5000 chars |
+| YouTube tags | Mix of broad and specific | ≤25 tags, ≤500 total chars |
+| YouTube chapters | First chapter MUST start at 0:00, ≥10s spacing — YouTube auto-creates clickable chapters from this exact format | 3–15 chapters, computed proportionally to segment word counts at 150 wpm |
+| Thumbnail concepts | 3 distinct visual briefs + text overlays — input for whichever thumbnail tool the creator uses (Canva, Figma, Midjourney) | Exactly 3 concepts, ≤40 chars per overlay |
+| Facebook caption | Facebook prefers conversation-starters, not SEO-heavy descriptions; aggressive truncation at ~280 chars | ≤280 chars |
+
+Runs in `runRenderPhase`, BEFORE voicing, so a failure here surfaces immediately rather than after a 5-min HeyGen render. Cost ~$0.05, runtime ~5s. Output saved to `clips.upload_pack` jsonb. The Generate page renders it as a copy-button panel below the finished video.
+
+Per BIBLE §15: this is the agent that closes the workflow leak — every uploaded video now has a metadata pack that took 30 seconds to generate instead of 5 minutes to write by hand.
+
 ## 8. Generation pipeline
 
 ```
@@ -210,6 +227,10 @@ Claude (script, ~30 sec, ~$0.10)
   ▼
 [user clicks Approve & render]
   │
+  ▼
+Upload-prep agent (~5 sec, ~$0.05)
+  │ produces title, description, tags, chapters, 3 thumbnail concepts,
+  │ Facebook caption — saved to clips.upload_pack
   ▼
 ElevenLabs (voice, ~30 sec, ~$0.30)
   │ MP3 of the full script
