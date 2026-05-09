@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { listUserOrgs } from "@/lib/orgs";
 import { supabaseService } from "@/lib/supabase/server";
 import type { AuditLog, Membership } from "@/lib/types";
+import BillingSection from "./BillingSection";
 import InviteSection from "./InviteSection";
 
 type PendingInvite = {
@@ -14,14 +15,34 @@ type PendingInvite = {
   created_at: string;
 };
 
+type OrgWithBilling = {
+  id: string;
+  name: string;
+  plan: string;
+  subscription_status: string | null;
+  current_period_end: string | null;
+  seats: number | null;
+};
+
 export default async function SettingsPage() {
   const user = await requireUser();
   const orgs = await listUserOrgs(user.id);
   if (orgs.length === 0) redirect("/onboarding");
   const { org, role } = orgs[0];
   const isAdmin = role === "owner" || role === "admin";
+  const isOwner = role === "owner";
 
   const sb = supabaseService();
+
+  // Fetch the full billing state — listUserOrgs only returns the
+  // baseline columns.
+  const { data: orgRow } = await sb
+    .from("orgs")
+    .select("id, name, plan, subscription_status, current_period_end, seats")
+    .eq("id", org.id)
+    .maybeSingle();
+  const billing = (orgRow ?? null) as OrgWithBilling | null;
+
   const { data: members } = await sb
     .from("memberships")
     .select("id, user_id, role, full_name, created_at")
@@ -71,6 +92,14 @@ export default async function SettingsPage() {
           ))}
         </div>
       </section>
+
+      {billing && (
+        <BillingSection
+          org={billing}
+          isOwner={isOwner}
+          memberCount={(members as Membership[] | null)?.length ?? 1}
+        />
+      )}
 
       {isAdmin && (
         <InviteSection orgId={org.id} initialPending={pendingInvites} />

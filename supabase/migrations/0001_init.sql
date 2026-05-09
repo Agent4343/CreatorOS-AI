@@ -11,12 +11,19 @@ create extension if not exists "pgcrypto";
 -- ============================================================
 
 create table if not exists orgs (
-  id              uuid primary key default gen_random_uuid(),
-  name            text not null,
-  plan            text not null default 'trial' check (plan in ('trial','starter','pro','enterprise')),
-  trial_ends_at   timestamptz default (now() + interval '14 days'),
-  created_at      timestamptz not null default now()
+  id                       uuid primary key default gen_random_uuid(),
+  name                     text not null,
+  plan                     text not null default 'trial' check (plan in ('trial','starter','pro','enterprise')),
+  trial_ends_at            timestamptz default (now() + interval '14 days'),
+  stripe_customer_id       text,
+  stripe_subscription_id   text,
+  subscription_status      text,
+  current_period_end       timestamptz,
+  seats                    int,
+  created_at               timestamptz not null default now()
 );
+create index if not exists orgs_stripe_customer_idx on orgs(stripe_customer_id);
+create index if not exists orgs_stripe_subscription_idx on orgs(stripe_subscription_id);
 
 create table if not exists memberships (
   id          uuid primary key default gen_random_uuid(),

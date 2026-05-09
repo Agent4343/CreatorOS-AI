@@ -14,6 +14,10 @@ const PROTECTED_API = [
   "/api/submissions",
   "/api/invites",
   "/api/uploads",
+  "/api/billing/checkout",
+  "/api/billing/portal",
+  // /api/billing/webhook intentionally NOT here — Stripe calls it
+  // server-to-server with its own signature auth.
 ];
 
 export async function middleware(req: NextRequest) {
