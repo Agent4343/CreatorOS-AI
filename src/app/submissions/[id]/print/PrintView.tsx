@@ -22,6 +22,7 @@ export default function PrintView({
   photoUrls,
   orgName,
   formName,
+  viaToken = false,
 }: {
   submission: Submission;
   schema: FormDefinition;
@@ -29,6 +30,7 @@ export default function PrintView({
   photoUrls: Record<string, string>;
   orgName: string;
   formName: string;
+  viaToken?: boolean;
 }) {
   return (
     <div className="mx-auto max-w-3xl bg-white p-8 print:p-0">
@@ -42,12 +44,14 @@ export default function PrintView({
         >
           Print / Save as PDF
         </button>
-        <a
-          href={`/submissions/${submission.id}`}
-          className="text-sm text-ink no-underline"
-        >
-          ← back to submission
-        </a>
+        {!viaToken && (
+          <a
+            href={`/submissions/${submission.id}`}
+            className="text-sm text-ink no-underline"
+          >
+            ← back to submission
+          </a>
+        )}
         <span className="ml-auto text-xs text-muted">
           Use your browser's print dialog → "Save as PDF" for a
           downloadable file.

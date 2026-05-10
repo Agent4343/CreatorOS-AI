@@ -5,6 +5,7 @@ import { supabaseService } from "@/lib/supabase/server";
 import type { AuditLog, Membership } from "@/lib/types";
 import BillingSection from "./BillingSection";
 import InviteSection from "./InviteSection";
+import NotificationsSection from "./NotificationsSection";
 
 type PendingInvite = {
   id: string;
@@ -22,6 +23,8 @@ type OrgWithBilling = {
   subscription_status: string | null;
   current_period_end: string | null;
   seats: number | null;
+  notification_emails: string[] | null;
+  notify_on_completion: boolean | null;
 };
 
 export default async function SettingsPage() {
@@ -38,7 +41,9 @@ export default async function SettingsPage() {
   // baseline columns.
   const { data: orgRow } = await sb
     .from("orgs")
-    .select("id, name, plan, subscription_status, current_period_end, seats")
+    .select(
+      "id, name, plan, subscription_status, current_period_end, seats, notification_emails, notify_on_completion",
+    )
     .eq("id", org.id)
     .maybeSingle();
   const billing = (orgRow ?? null) as OrgWithBilling | null;
@@ -98,6 +103,14 @@ export default async function SettingsPage() {
           org={billing}
           isOwner={isOwner}
           memberCount={(members as Membership[] | null)?.length ?? 1}
+        />
+      )}
+
+      {isAdmin && (
+        <NotificationsSection
+          orgId={org.id}
+          initialEmails={billing?.notification_emails ?? []}
+          initialEnabled={billing?.notify_on_completion ?? true}
         />
       )}
 

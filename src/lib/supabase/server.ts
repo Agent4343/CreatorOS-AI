@@ -16,6 +16,7 @@ type Database = {
       form_versions: AnyTable;
       submissions: AnyTable;
       submission_signatures: AnyTable;
+      submission_email_log: AnyTable;
       audit_logs: AnyTable;
     };
     Views: Record<string, never>;

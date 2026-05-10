@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AuthError, requestFingerprint, requireMembership, requireUser } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
+import { notifySubmissionCompleted } from "@/lib/notifySubmissionCompleted";
 import { computeSignatureHash } from "@/lib/signatures";
 import { supabaseService } from "@/lib/supabase/server";
 import type { FormDefinition } from "@/lib/types";
@@ -150,6 +151,14 @@ export async function POST(
           completed_at: new Date().toISOString(),
         })
         .eq("id", sRow.id);
+
+      // Fire-and-forget the notification email. Never block signing
+      // on email delivery — Resend down, missing env, zero recipients
+      // configured, all of those are non-fatal. The email log table
+      // captures success or failure for admins to inspect later.
+      notifySubmissionCompleted(sRow.id).catch((err) => {
+        console.error("[sign] notification email failed", err);
+      });
     } else if (sRow.status === "in_progress") {
       // We have at least one signature now; mark awaiting_signature.
       await sb

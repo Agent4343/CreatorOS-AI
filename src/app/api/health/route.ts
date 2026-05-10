@@ -18,6 +18,9 @@ const OPTIONAL = [
   "STRIPE_PRICE_STARTER",
   "STRIPE_PRICE_PRO",
   "ADMIN_USER_IDS",
+  "RESEND_API_KEY",
+  "EMAIL_FROM",
+  "APP_URL",
 ];
 
 export async function GET() {
