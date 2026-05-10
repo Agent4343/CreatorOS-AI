@@ -521,14 +521,24 @@ export default function BatchStartButton({
                               );
                             }
                             return (
-                              <p className="mt-1 text-[11px] text-muted">
+                              <div className="mt-1 text-[11px] text-muted">
                                 Any of {selected.members.length} member
-                                {selected.members.length === 1 ? "" : "s"} can
-                                sign:{" "}
-                                {selected.members
-                                  .map((m) => m.name ?? m.email)
-                                  .join(", ")}
-                              </p>
+                                {selected.members.length === 1 ? "" : "s"} can sign:
+                                <ul className="mt-0.5 space-y-0.5">
+                                  {selected.members.map((m) => (
+                                    <li key={m.email}>
+                                      <span className="text-ink">
+                                        {m.name ?? m.email}
+                                      </span>
+                                      {m.name && (
+                                        <span className="ml-1.5 font-mono">
+                                          {m.email}
+                                        </span>
+                                      )}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
                             );
                           })()}
                         </div>

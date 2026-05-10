@@ -4,7 +4,10 @@ import { useState } from "react";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export type RoleMember = { email: string; name?: string };
+/** Roster member. Name is required — every signature on a
+ * compliance form should be attributable to a clearly-named human,
+ * not just an email. */
+export type RoleMember = { email: string; name: string };
 
 export type Role = {
   id: string;
@@ -197,15 +200,14 @@ function RoleCard({
   function addMember() {
     setLocalError(null);
     const email = draftEmail.trim().toLowerCase();
+    const name = draftMemberName.trim();
+    if (!name) return setLocalError("Name required");
     if (!email) return setLocalError("Email required");
     if (!EMAIL_RE.test(email)) return setLocalError("Invalid email");
     if (members.some((m) => m.email === email)) {
       return setLocalError("Already in roster");
     }
-    setMembers([
-      ...members,
-      { email, name: draftMemberName.trim() || undefined },
-    ]);
+    setMembers([...members, { email, name }]);
     setDraftEmail("");
     setDraftMemberName("");
   }
@@ -243,11 +245,26 @@ function RoleCard({
           </button>
         </div>
         <div className="mt-2 text-xs text-muted">
-          {role.members.length === 0
-            ? "No members yet"
-            : `${role.members.length} member${role.members.length === 1 ? "" : "s"}: ${role.members
-                .map((m) => m.name ?? m.email)
-                .join(", ")}`}
+          {role.members.length === 0 ? (
+            "No members yet"
+          ) : (
+            <>
+              <span>
+                {role.members.length} member
+                {role.members.length === 1 ? "" : "s"}:
+              </span>
+              <ul className="mt-1 space-y-0.5">
+                {role.members.map((m) => (
+                  <li key={m.email}>
+                    <span className="text-ink">{m.name}</span>
+                    <span className="ml-1.5 font-mono text-[11px]">
+                      {m.email}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
       </div>
     );
@@ -285,12 +302,10 @@ function RoleCard({
               className="flex items-baseline justify-between rounded-md bg-white px-2 py-1 text-sm"
             >
               <span>
-                <span className="font-medium">{m.name ?? m.email}</span>
-                {m.name && (
-                  <span className="ml-1.5 font-mono text-xs text-muted">
-                    {m.email}
-                  </span>
-                )}
+                <span className="font-medium">{m.name}</span>
+                <span className="ml-1.5 font-mono text-xs text-muted">
+                  {m.email}
+                </span>
               </span>
               <button
                 type="button"
@@ -315,7 +330,8 @@ function RoleCard({
             type="text"
             value={draftMemberName}
             onChange={(e) => setDraftMemberName(e.target.value)}
-            placeholder="Name (optional)"
+            placeholder="Full name"
+            required
             className="rounded-md border border-ink/20 p-1.5 text-sm"
           />
           <input
@@ -323,6 +339,7 @@ function RoleCard({
             value={draftEmail}
             onChange={(e) => setDraftEmail(e.target.value)}
             placeholder="email@example.com"
+            required
             className="rounded-md border border-ink/20 p-1.5 text-sm"
           />
           <button
@@ -333,6 +350,10 @@ function RoleCard({
             Add member
           </button>
         </div>
+        <p className="mt-1 text-[11px] text-muted">
+          Name + email are both required. Compliance reviewers need to
+          see who signed, not just an email.
+        </p>
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-2">

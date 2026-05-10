@@ -39,7 +39,14 @@ export async function PATCH(
       update.description = body.description?.trim() || null;
     }
     if (body.members !== undefined) {
-      update.members = normaliseMembers(body.members);
+      try {
+        update.members = normaliseMembers(body.members);
+      } catch (e) {
+        return NextResponse.json(
+          { error: e instanceof Error ? e.message : "Invalid members" },
+          { status: 400 },
+        );
+      }
     }
     if (Object.keys(update).length === 0) {
       return NextResponse.json({ error: "no fields to update" }, { status: 400 });

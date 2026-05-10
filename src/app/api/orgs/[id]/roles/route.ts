@@ -63,7 +63,15 @@ export async function POST(
     if (!name) {
       return NextResponse.json({ error: "name required" }, { status: 400 });
     }
-    const members = normaliseMembers(body.members);
+    let members: Member[];
+    try {
+      members = normaliseMembers(body.members);
+    } catch (e) {
+      return NextResponse.json(
+        { error: e instanceof Error ? e.message : "Invalid members" },
+        { status: 400 },
+      );
+    }
     const sb = supabaseService();
     const { data, error } = await sb
       .from("org_roles")
@@ -113,11 +121,20 @@ export function normaliseMembers(input: unknown): Member[] {
     if (!raw || typeof raw !== "object") continue;
     const r = raw as { email?: unknown; name?: unknown };
     const email = String(r.email ?? "").trim().toLowerCase();
-    if (!email || !EMAIL_RE.test(email)) continue;
+    const name = typeof r.name === "string" ? r.name.trim() : "";
+    if (!email || !EMAIL_RE.test(email)) {
+      throw new Error(`Member email invalid or missing: "${email}"`);
+    }
+    // Name is required so every signature has a clear human name on
+    // it — anonymous email-only members would print as "brad@hebron"
+    // on the audit trail, which fails the eIDAS/Part-11 readability
+    // bar for compliance reviewers.
+    if (!name) {
+      throw new Error(`Member ${email}: name required`);
+    }
     if (seen.has(email)) continue;
     seen.add(email);
-    const name = typeof r.name === "string" ? r.name.trim() : "";
-    out.push({ email, name: name || undefined });
+    out.push({ email, name });
   }
   return out;
 }
