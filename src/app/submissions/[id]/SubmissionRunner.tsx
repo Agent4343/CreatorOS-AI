@@ -81,6 +81,20 @@ export default function SubmissionRunner({
     }
   }
 
+  /**
+   * Print/Save-as-PDF needs the latest data. Force a save first so
+   * we don't print whatever was last persisted (potentially missing
+   * the user's most recent edits, since auto-save runs only every
+   * 5 sec). Idempotent: if nothing's dirty and nothing fails, just
+   * navigates.
+   */
+  async function printNow() {
+    if (canEdit && dirtyRef.current) {
+      await save();
+    }
+    window.location.href = `/submissions/${submission.id}/print`;
+  }
+
   async function applySignature(fieldId: string, signatureImage: string) {
     setError(null);
     try {
@@ -130,12 +144,14 @@ export default function SubmissionRunner({
           </p>
         </div>
         <div className="flex gap-2">
-          <a
-            href={`/submissions/${submission.id}/print`}
-            className="rounded-md bg-ink px-4 py-2 text-sm text-bg no-underline"
+          <button
+            type="button"
+            onClick={printNow}
+            disabled={saving}
+            className="rounded-md bg-ink px-4 py-2 text-sm text-bg disabled:opacity-50"
           >
-            Download / Print
-          </a>
+            {saving ? "Saving…" : "Download / Print"}
+          </button>
           {canEdit && (
             <button
               type="button"
