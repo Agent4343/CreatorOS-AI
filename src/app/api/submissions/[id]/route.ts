@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AuthError, requireMembership, requireUser } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
+import { canWriteSection, computeSectionLock } from "@/lib/sectionLocks";
 import { supabaseService } from "@/lib/supabase/server";
+import type { FormDefinition, SignatureAssignments } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -64,7 +66,9 @@ export async function PATCH(
     const sb = supabaseService();
     const { data: existing, error: getErr } = await sb
       .from("submissions")
-      .select("id, org_id, status, started_by, last_edited_by")
+      .select(
+        "id, org_id, status, data, started_by, last_edited_by, signature_assignments, form_versions(schema)",
+      )
       .eq("id", id)
       .maybeSingle();
     if (getErr) throw getErr;
@@ -75,8 +79,11 @@ export async function PATCH(
       id: string;
       org_id: string;
       status: string;
+      data: Record<string, unknown>;
       started_by: string;
       last_edited_by: string | null;
+      signature_assignments: SignatureAssignments | null;
+      form_versions: { schema: FormDefinition } | null;
     };
 
     await requireMembership(e.org_id);
@@ -86,6 +93,68 @@ export async function PATCH(
         { error: `Cannot edit a ${e.status} submission` },
         { status: 409 },
       );
+    }
+
+    // Per-section lock enforcement. Compute which sections the
+    // requesting user is allowed to write to (open or
+    // reserved-for-me), and reject any field-value change that
+    // touches a section the user can't edit.
+    //
+    // Why server-side: the runner disables locked inputs in the UI,
+    // but a hand-crafted PATCH could still try. RLS doesn't know
+    // about sections, so the gate has to live here.
+    const schema = e.form_versions?.schema;
+    if (schema) {
+      const { data: sigsRows } = await sb
+        .from("submission_signatures")
+        .select("field_id, signer_name, signed_at")
+        .eq("submission_id", e.id);
+      const signedFields = (sigsRows ?? []) as {
+        field_id: string;
+        signer_name: string;
+        signed_at: string;
+      }[];
+      const assignments = e.signature_assignments ?? {};
+      const userEmail = (user.email ?? "").toLowerCase();
+      const currentData = e.data ?? {};
+
+      for (const section of schema.sections) {
+        const lock = computeSectionLock({
+          section,
+          signatureAssignments: assignments,
+          signedFields,
+          currentUserEmail: userEmail,
+        });
+        if (canWriteSection(lock)) continue;
+        // Find any field in this section whose value the request is
+        // changing — if so, reject.
+        for (const f of section.fields) {
+          if (
+            f.type === "section_header" ||
+            f.type === "divider" ||
+            f.type === "signature"
+          ) {
+            continue;
+          }
+          const incoming = (body.data as Record<string, unknown>)[f.id];
+          const stored = currentData[f.id];
+          if (!shallowEqual(incoming, stored)) {
+            const owner =
+              lock.state === "reserved_for_other"
+                ? `${lock.assigneeName ?? lock.assigneeEmail}${lock.assigneeRole ? ` (${lock.assigneeRole})` : ""}`
+                : "the previous signer";
+            return NextResponse.json(
+              {
+                error: `Section "${section.title}" is locked. Waiting for ${owner} — or already signed.`,
+                section_id: section.id,
+                section_title: section.title,
+                lock_state: lock.state,
+              },
+              { status: 403 },
+            );
+          }
+        }
+      }
     }
 
     const now = new Date().toISOString();
@@ -127,4 +196,25 @@ export async function PATCH(
       { status: 500 },
     );
   }
+}
+
+/**
+ * Cheap equality check for submission field values. JSON-encodable
+ * scalars or arrays — strings, numbers, booleans, nulls, arrays of
+ * those. Good enough for the field types FieldForm stores.
+ */
+function shallowEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a == null || b == null) return a == null && b == null;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!shallowEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  if (typeof a === "object" && typeof b === "object") {
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
+  return false;
 }

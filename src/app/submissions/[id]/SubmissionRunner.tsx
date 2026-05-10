@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  type SectionLockState,
+  computeAllSectionLocks,
+} from "@/lib/sectionLocks";
 import type {
   FormDefinition,
   FormField,
@@ -99,6 +103,24 @@ export default function SubmissionRunner({
   const totalSections = schema.sections.length;
   const isLastSection = currentSection >= totalSections - 1;
   const sec = schema.sections[currentSection];
+
+  // Per-section lock state — recomputes whenever a signature lands.
+  // Open/reserved-for-me sections allow edits; reserved-for-other and
+  // signed-locked sections render read-only banners and disable inputs.
+  const sectionLocks = useMemo(
+    () =>
+      computeAllSectionLocks({
+        schema,
+        signatureAssignments,
+        signedFields: signed.map((s) => ({
+          field_id: s.field_id,
+          signer_name: s.signer_name,
+          signed_at: s.signed_at,
+        })),
+        currentUserEmail,
+      }),
+    [schema, signatureAssignments, signed, currentUserEmail],
+  );
 
   // Pre-compute which sections still have unfilled required fields
   // so we can warn before "Finish".
@@ -280,12 +302,17 @@ export default function SubmissionRunner({
       )}
 
       {/* Current section */}
-      {sec && (
+      {sec && (() => {
+        const lock = sectionLocks[sec.id] ?? { state: "open" as const };
+        const sectionCanEdit =
+          canEdit && (lock.state === "open" || lock.state === "reserved_for_me");
+        return (
         <section className="mt-4 rounded-lg border border-ink/15 bg-white p-4">
           <h2 className="text-lg font-bold">{sec.title}</h2>
           {sec.description && (
             <p className="mt-1 text-sm text-muted">{sec.description}</p>
           )}
+          <SectionLockBanner lock={lock} />
           <div className="mt-4 space-y-5">
             {sec.fields.map((f) => (
               <FieldRenderer
@@ -293,7 +320,7 @@ export default function SubmissionRunner({
                 field={f}
                 value={data[f.id]}
                 onChange={(v) => set(f.id, v)}
-                canEdit={canEdit}
+                canEdit={sectionCanEdit}
                 signed={signed.find((s) => s.field_id === f.id)}
                 onSign={(img) => applySignature(f.id, img)}
                 currentUserId={currentUserId}
@@ -305,14 +332,32 @@ export default function SubmissionRunner({
             ))}
           </div>
         </section>
-      )}
+        );
+      })()}
 
-      {/* Section dots — quick jump nav for desktop / longer-form */}
+      {/* Section dots — quick jump nav for desktop / longer-form.
+          Color encodes lock state at a glance:
+            green border = signed (locked)
+            accent fill  = your turn
+            yellow tint  = waiting on someone else
+            grey         = open with missing fields
+       */}
       {totalSections > 1 && (
         <div className="mt-4 flex flex-wrap gap-1.5">
           {schema.sections.map((s, i) => {
             const missing = missingByIndex[i].length;
             const active = i === currentSection;
+            const lock = sectionLocks[s.id] ?? { state: "open" as const };
+            let cls = "border border-ink/15 text-ink";
+            if (active) cls = "bg-ink text-bg";
+            else if (lock.state === "signed_locked")
+              cls = "border border-ok/50 bg-ok/10 text-ink";
+            else if (lock.state === "reserved_for_me")
+              cls = "border border-accent bg-accent/10 text-ink";
+            else if (lock.state === "reserved_for_other")
+              cls = "border border-warn/40 bg-warn/5 text-muted";
+            else if (missing > 0)
+              cls = "border border-warn/40 bg-warn/5 text-ink";
             return (
               <button
                 key={s.id}
@@ -322,15 +367,17 @@ export default function SubmissionRunner({
                   setCurrentSection(i);
                   if (typeof window !== "undefined") window.scrollTo({ top: 0 });
                 }}
-                title={s.title}
-                className={
-                  "min-w-[2.25rem] rounded-md px-2 py-1 text-xs " +
-                  (active
-                    ? "bg-ink text-bg"
-                    : missing > 0
-                      ? "border border-warn/40 bg-warn/5 text-ink"
-                      : "border border-ink/15 text-ink")
+                title={
+                  s.title +
+                  (lock.state === "signed_locked"
+                    ? " — signed"
+                    : lock.state === "reserved_for_me"
+                      ? " — your turn"
+                      : lock.state === "reserved_for_other"
+                        ? ` — waiting for ${lock.assigneeName ?? lock.assigneeEmail}`
+                        : "")
                 }
+                className={"min-w-[2.25rem] rounded-md px-2 py-1 text-xs " + cls}
               >
                 {i + 1}
                 {missing > 0 && !active && (
@@ -562,6 +609,36 @@ function timeAgo(iso: string): string {
   if (h < 24) return `${h}h ago`;
   const d = Math.round(h / 24);
   return `${d}d ago`;
+}
+
+function SectionLockBanner({ lock }: { lock: SectionLockState }) {
+  if (lock.state === "open" || lock.state === "reserved_for_me") {
+    // No banner for editable sections. (reserved_for_me means "your
+    // turn" — we don't loud-banner it, the existing signature-field
+    // assignment line covers that.)
+    return null;
+  }
+  if (lock.state === "reserved_for_other") {
+    return (
+      <div className="mt-2 rounded-md border border-warn/40 bg-warn/5 p-2.5 text-xs">
+        <strong className="text-ink">🔒 Waiting for {lock.assigneeName ?? lock.assigneeEmail}</strong>
+        {lock.assigneeRole && (
+          <span className="text-muted"> ({lock.assigneeRole})</span>
+        )}
+        <span className="text-muted"> — this section is read-only until they fill and sign it.</span>
+      </div>
+    );
+  }
+  // signed_locked
+  return (
+    <div className="mt-2 rounded-md border border-ok/40 bg-ok/5 p-2.5 text-xs">
+      <strong className="text-ink">✓ Signed by {lock.signerName}</strong>
+      <span className="text-muted">
+        {lock.signedAt && <> on {new Date(lock.signedAt).toLocaleString()}</>}
+        {" — section locked to preserve signature integrity."}
+      </span>
+    </div>
+  );
 }
 
 function ProgressBar({ current, total }: { current: number; total: number }) {
