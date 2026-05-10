@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   FormDefinition,
   FormField,
@@ -23,6 +23,27 @@ type SignedField = {
   signed_at: string;
 };
 
+type SaveState = "idle" | "saving" | "saved" | "dirty" | "error";
+
+/**
+ * Mobile-first form runner.
+ *
+ * Field workers fill these forms on phones with one hand, often with
+ * gloves on, often outside in bad light. The UI has to optimize for
+ * that. Decisions:
+ *
+ *  - Section-by-section navigation, not one giant scroll. A 60-field
+ *    form on a 5" screen is misery; one section at a time keeps
+ *    scope tight and gives the worker a clear "X of Y" sense of
+ *    progress.
+ *  - Sticky bottom action bar for Prev / Next / Finish so the
+ *    primary action is always reachable with the thumb.
+ *  - Full-width 56px tap targets for radio / checkbox / multi-select.
+ *  - Loud save indicator ("Saved 2:14 PM" / "Saving…" / "Couldn't
+ *    save"). Silent failures are the worst possible field UX — the
+ *    worker thinks they filled in 30 fields and then loses them.
+ *  - Save errors block Next / Finish until the user sees them.
+ */
 export default function SubmissionRunner({
   submission,
   schema,
@@ -36,16 +57,42 @@ export default function SubmissionRunner({
   canEdit: boolean;
   currentUserId: string;
 }) {
-  const [data, setData] = useState<Record<string, unknown>>(submission.data);
+  const [data, setData] = useState<Record<string, unknown>>(submission.data ?? {});
   const [status, setStatus] = useState<SubmissionStatus>(submission.status);
   const [signed, setSigned] = useState<SignedField[]>(signedFields);
+  const [saveState, setSaveState] = useState<SaveState>("idle");
   const [savedAt, setSavedAt] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentSection, setCurrentSection] = useState(0);
   const dirtyRef = useRef(false);
+  const dataRef = useRef(data);
+  dataRef.current = data;
 
-  // Auto-save every 5 sec when dirty. Important in field environments
-  // where the worker may close the page abruptly.
+  const totalSections = schema.sections.length;
+  const isLastSection = currentSection >= totalSections - 1;
+  const sec = schema.sections[currentSection];
+
+  // Pre-compute which sections still have unfilled required fields
+  // so we can warn before "Finish".
+  const missingByIndex = useMemo(() => {
+    return schema.sections.map((s) => {
+      const missing: string[] = [];
+      for (const f of s.fields) {
+        if (!f.required) continue;
+        if (f.type === "section_header" || f.type === "divider") continue;
+        if (f.type === "signature") continue; // handled separately
+        const v = data[f.id];
+        const empty =
+          v == null ||
+          v === "" ||
+          (Array.isArray(v) && v.length === 0);
+        if (empty) missing.push(f.label);
+      }
+      return missing;
+    });
+  }, [data, schema]);
+
+  // Auto-save every 5 sec when dirty.
   useEffect(() => {
     if (status === "completed" || status === "rejected") return;
     const t = setInterval(() => {
@@ -55,42 +102,70 @@ export default function SubmissionRunner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
+  // Warn before unloading with unsaved changes.
+  useEffect(() => {
+    function beforeUnload(e: BeforeUnloadEvent) {
+      if (dirtyRef.current) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    }
+    window.addEventListener("beforeunload", beforeUnload);
+    return () => window.removeEventListener("beforeunload", beforeUnload);
+  }, []);
+
   function set(fieldId: string, value: unknown) {
     setData((d) => ({ ...d, [fieldId]: value }));
     dirtyRef.current = true;
+    setSaveState("dirty");
   }
 
-  async function save() {
-    if (!canEdit) return;
-    setSaving(true);
+  async function save(): Promise<boolean> {
+    if (!canEdit) return true;
+    setSaveState("saving");
     setError(null);
     try {
       const res = await fetch(`/api/submissions/${submission.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data }),
+        body: JSON.stringify({ data: dataRef.current }),
       });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? "Save failed");
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? `Save failed (${res.status})`);
       setSavedAt(new Date().toLocaleTimeString());
       dirtyRef.current = false;
+      setSaveState("saved");
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setSaving(false);
+      setSaveState("error");
+      return false;
     }
   }
 
   /**
-   * Print/Save-as-PDF needs the latest data. Force a save first so
-   * we don't print whatever was last persisted (potentially missing
-   * the user's most recent edits, since auto-save runs only every
-   * 5 sec). Idempotent: if nothing's dirty and nothing fails, just
-   * navigates.
+   * Block navigation if the latest save failed. Saving silently and
+   * letting the worker keep going is the recipe for lost field data.
    */
+  async function next() {
+    if (canEdit && dirtyRef.current) {
+      const ok = await save();
+      if (!ok) return;
+    }
+    if (saveState === "error") return;
+    setCurrentSection((s) => Math.min(s + 1, totalSections - 1));
+    if (typeof window !== "undefined") window.scrollTo({ top: 0 });
+  }
+
+  function prev() {
+    setCurrentSection((s) => Math.max(s - 1, 0));
+    if (typeof window !== "undefined") window.scrollTo({ top: 0 });
+  }
+
   async function printNow() {
     if (canEdit && dirtyRef.current) {
-      await save();
+      const ok = await save();
+      if (!ok) return;
     }
     window.location.href = `/submissions/${submission.id}/print`;
   }
@@ -99,7 +174,10 @@ export default function SubmissionRunner({
     setError(null);
     try {
       // Save current data first so the signature's data_hash binds to it.
-      if (dirtyRef.current) await save();
+      if (dirtyRef.current) {
+        const ok = await save();
+        if (!ok) return;
+      }
 
       const geo = await tryGeolocation();
       const res = await fetch(`/api/submissions/${submission.id}/sign`, {
@@ -111,7 +189,7 @@ export default function SubmissionRunner({
           geolocation: geo,
         }),
       });
-      const body = await res.json();
+      const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? "Sign failed");
       setSigned((s) => [
         ...s,
@@ -129,58 +207,45 @@ export default function SubmissionRunner({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-baseline justify-between">
-        <div>
-          <a href="/submissions" className="font-mono text-xs">
-            ← back to submissions
-          </a>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight">
-            {submission.form_name}
-          </h1>
-          <p className="font-mono text-xs text-muted">
-            Status: <StatusTag status={status} />
-            {savedAt && <> · saved {savedAt}</>}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={printNow}
-            disabled={saving}
-            className="rounded-md bg-ink px-4 py-2 text-sm text-bg disabled:opacity-50"
+    <div className="pb-28">
+      {/* Sticky header — title, progress, save state, always visible */}
+      <div className="sticky top-0 z-20 -mx-4 border-b border-ink/10 bg-bg/95 px-4 py-2 backdrop-blur md:-mx-6 md:px-6">
+        <div className="flex items-center justify-between gap-3">
+          <a
+            href="/submissions"
+            className="font-mono text-xs text-muted no-underline"
           >
-            {saving ? "Saving…" : "Download / Print"}
-          </button>
-          {canEdit && (
-            <button
-              type="button"
-              onClick={save}
-              disabled={saving}
-              className="rounded-md border border-ink/20 px-4 py-2 text-sm text-ink"
-            >
-              {saving ? "Saving…" : "Save"}
-            </button>
-          )}
+            ← back
+          </a>
+          <SaveIndicator state={saveState} savedAt={savedAt} canEdit={canEdit} />
         </div>
+        <h1 className="mt-1 truncate text-base font-bold md:text-xl">
+          {submission.form_name}
+        </h1>
+        <div className="mt-1 flex items-center gap-2 text-[11px] text-muted">
+          <span className="font-mono">
+            Section {currentSection + 1} of {totalSections}
+          </span>
+          <span>·</span>
+          <StatusTag status={status} />
+        </div>
+        <ProgressBar current={currentSection + 1} total={totalSections} />
       </div>
 
       {!canEdit && (
-        <div className="rounded-md border border-ink/15 bg-white p-3 text-sm text-muted">
+        <div className="mt-3 rounded-md border border-ink/15 bg-white p-3 text-sm text-muted">
           Read-only — submission is {status}.
         </div>
       )}
 
-      {schema.sections.map((sec) => (
-        <section
-          key={sec.id}
-          className="rounded-lg border border-ink/15 bg-white p-4"
-        >
+      {/* Current section */}
+      {sec && (
+        <section className="mt-4 rounded-lg border border-ink/15 bg-white p-4">
           <h2 className="text-lg font-bold">{sec.title}</h2>
           {sec.description && (
             <p className="mt-1 text-sm text-muted">{sec.description}</p>
           )}
-          <div className="mt-3 space-y-4">
+          <div className="mt-4 space-y-5">
             {sec.fields.map((f) => (
               <FieldRenderer
                 key={f.id}
@@ -197,15 +262,144 @@ export default function SubmissionRunner({
             ))}
           </div>
         </section>
-      ))}
+      )}
 
-      {error && (
-        <div className="rounded-md border border-err/40 bg-err/5 p-3 text-sm text-err">
-          {error}
+      {/* Section dots — quick jump nav for desktop / longer-form */}
+      {totalSections > 1 && (
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          {schema.sections.map((s, i) => {
+            const missing = missingByIndex[i].length;
+            const active = i === currentSection;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => {
+                  if (canEdit && dirtyRef.current) save();
+                  setCurrentSection(i);
+                  if (typeof window !== "undefined") window.scrollTo({ top: 0 });
+                }}
+                title={s.title}
+                className={
+                  "min-w-[2.25rem] rounded-md px-2 py-1 text-xs " +
+                  (active
+                    ? "bg-ink text-bg"
+                    : missing > 0
+                      ? "border border-warn/40 bg-warn/5 text-ink"
+                      : "border border-ink/15 text-ink")
+                }
+              >
+                {i + 1}
+                {missing > 0 && !active && (
+                  <span className="ml-1 text-[10px] text-warn">●</span>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
+
+      {error && (
+        <div className="mt-3 rounded-md border border-err/40 bg-err/10 p-3 text-sm text-err">
+          <strong>{error}</strong>
+          <div className="mt-1 text-xs">
+            Your changes were not saved. Try the Save button or check your
+            connection before continuing.
+          </div>
+        </div>
+      )}
+
+      {/* Sticky bottom action bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-20 border-t border-ink/15 bg-bg/95 px-3 py-3 backdrop-blur">
+        <div className="mx-auto flex max-w-3xl items-center gap-2">
+          <button
+            type="button"
+            onClick={prev}
+            disabled={currentSection === 0}
+            className="min-h-[48px] rounded-md border border-ink/20 px-4 text-sm font-medium text-ink disabled:opacity-40"
+          >
+            ← Back
+          </button>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={save}
+              disabled={saveState === "saving"}
+              className="min-h-[48px] rounded-md border border-ink/20 px-3 text-sm text-ink disabled:opacity-50"
+            >
+              Save
+            </button>
+          )}
+          <div className="flex-1" />
+          {isLastSection ? (
+            <button
+              type="button"
+              onClick={printNow}
+              disabled={saveState === "saving"}
+              className="min-h-[48px] flex-1 rounded-md bg-accent px-5 text-sm font-bold text-bg disabled:opacity-50 md:flex-none"
+            >
+              {saveState === "saving" ? "Saving…" : "Finish · Download / Print"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={next}
+              disabled={saveState === "saving"}
+              className="min-h-[48px] flex-1 rounded-md bg-ink px-5 text-sm font-bold text-bg disabled:opacity-50 md:flex-none"
+            >
+              {saveState === "saving" ? "Saving…" : "Next →"}
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
+}
+
+function ProgressBar({ current, total }: { current: number; total: number }) {
+  const pct = Math.round((current / total) * 100);
+  return (
+    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-ink/10">
+      <div
+        className="h-full rounded-full bg-accent transition-all"
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  );
+}
+
+function SaveIndicator({
+  state,
+  savedAt,
+  canEdit,
+}: {
+  state: SaveState;
+  savedAt: string | null;
+  canEdit: boolean;
+}) {
+  if (!canEdit) return null;
+  if (state === "saving")
+    return (
+      <span className="text-xs text-muted">
+        <span className="mr-1 inline-block h-2 w-2 animate-pulse rounded-full bg-warn" />
+        Saving…
+      </span>
+    );
+  if (state === "error")
+    return (
+      <span className="text-xs font-bold text-err">
+        ⚠ Couldn&apos;t save — tap Save
+      </span>
+    );
+  if (state === "dirty")
+    return <span className="text-xs text-muted">● Unsaved changes</span>;
+  if (state === "saved" || savedAt)
+    return (
+      <span className="text-xs text-ok">
+        ✓ Saved{savedAt ? ` ${savedAt}` : ""}
+      </span>
+    );
+  return <span className="text-xs text-muted">—</span>;
 }
 
 function StatusTag({ status }: { status: SubmissionStatus }) {
@@ -217,7 +411,7 @@ function StatusTag({ status }: { status: SubmissionStatus }) {
         : status === "awaiting_signature"
           ? "text-warn"
           : "text-muted";
-  return <span className={cls}>{status}</span>;
+  return <span className={cls}>{status.replace("_", " ")}</span>;
 }
 
 function FieldRenderer({
@@ -242,18 +436,24 @@ function FieldRenderer({
 }) {
   const disabled = !canEdit || !!signed;
   const labelEl = (
-    <label className="block text-sm font-medium">
+    <label className="block text-base font-medium">
       {field.label}
       {field.required && <span className="ml-1 text-err">*</span>}
       {field.description && (
-        <span className="ml-2 text-xs text-muted">{field.description}</span>
+        <div className="mt-0.5 text-xs font-normal text-muted">
+          {field.description}
+        </div>
       )}
     </label>
   );
 
   switch (field.type) {
     case "section_header":
-      return <h3 className="text-sm font-bold uppercase tracking-wider">{field.label}</h3>;
+      return (
+        <h3 className="text-sm font-bold uppercase tracking-wider text-muted">
+          {field.label}
+        </h3>
+      );
     case "divider":
       return <hr className="border-ink/10" />;
     case "text":
@@ -266,7 +466,7 @@ function FieldRenderer({
             value={(value as string) ?? ""}
             onChange={(e) => onChange(e.target.value)}
             placeholder={field.placeholder}
-            className="mt-1 w-full rounded-md border border-ink/20 bg-white p-2 text-sm disabled:bg-bg"
+            className="mt-1.5 min-h-[48px] w-full rounded-md border border-ink/20 bg-white p-3 text-base disabled:bg-bg"
           />
         </div>
       );
@@ -279,7 +479,7 @@ function FieldRenderer({
             disabled={disabled}
             value={(value as string) ?? ""}
             onChange={(e) => onChange(e.target.value)}
-            className="mt-1 w-full rounded-md border border-ink/20 bg-white p-2 text-sm disabled:bg-bg"
+            className="mt-1.5 w-full rounded-md border border-ink/20 bg-white p-3 text-base disabled:bg-bg"
           />
         </div>
       );
@@ -289,10 +489,13 @@ function FieldRenderer({
           {labelEl}
           <input
             type="number"
+            inputMode="decimal"
             disabled={disabled}
             value={(value as number | string) ?? ""}
-            onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
-            className="mt-1 w-full rounded-md border border-ink/20 bg-white p-2 text-sm disabled:bg-bg"
+            onChange={(e) =>
+              onChange(e.target.value === "" ? null : Number(e.target.value))
+            }
+            className="mt-1.5 min-h-[48px] w-full rounded-md border border-ink/20 bg-white p-3 text-base disabled:bg-bg"
           />
         </div>
       );
@@ -305,7 +508,7 @@ function FieldRenderer({
             disabled={disabled}
             value={(value as string) ?? ""}
             onChange={(e) => onChange(e.target.value)}
-            className="mt-1 rounded-md border border-ink/20 bg-white p-2 text-sm disabled:bg-bg"
+            className="mt-1.5 min-h-[48px] w-full rounded-md border border-ink/20 bg-white p-3 text-base disabled:bg-bg md:w-auto"
           />
         </div>
       );
@@ -318,7 +521,7 @@ function FieldRenderer({
             disabled={disabled}
             value={(value as string) ?? ""}
             onChange={(e) => onChange(e.target.value)}
-            className="mt-1 rounded-md border border-ink/20 bg-white p-2 text-sm disabled:bg-bg"
+            className="mt-1.5 min-h-[48px] w-full rounded-md border border-ink/20 bg-white p-3 text-base disabled:bg-bg md:w-auto"
           />
         </div>
       );
@@ -330,7 +533,7 @@ function FieldRenderer({
             disabled={disabled}
             value={(value as string) ?? ""}
             onChange={(e) => onChange(e.target.value)}
-            className="mt-1 w-full rounded-md border border-ink/20 bg-white p-2 text-sm disabled:bg-bg"
+            className="mt-1.5 min-h-[48px] w-full rounded-md border border-ink/20 bg-white p-3 text-base disabled:bg-bg"
           >
             <option value="">— select —</option>
             {(field.options ?? []).map((opt) => (
@@ -346,7 +549,7 @@ function FieldRenderer({
       return (
         <div>
           {labelEl}
-          <div className="mt-1 flex flex-wrap gap-2">
+          <div className="mt-1.5 flex flex-col gap-2">
             {(field.options ?? []).map((opt) => {
               const on = selected.includes(opt);
               return (
@@ -356,17 +559,20 @@ function FieldRenderer({
                   disabled={disabled}
                   onClick={() =>
                     onChange(
-                      on ? selected.filter((s) => s !== opt) : [...selected, opt],
+                      on
+                        ? selected.filter((s) => s !== opt)
+                        : [...selected, opt],
                     )
                   }
                   className={
-                    "rounded-md px-3 py-1 text-xs " +
+                    "flex min-h-[52px] w-full items-center justify-between rounded-md border px-4 py-2 text-left text-base transition-colors " +
                     (on
-                      ? "bg-ink text-bg"
-                      : "border border-ink/20 text-ink")
+                      ? "border-ink bg-ink text-bg"
+                      : "border-ink/20 bg-white text-ink")
                   }
                 >
-                  {opt}
+                  <span>{opt}</span>
+                  <span className="text-lg">{on ? "✓" : ""}</span>
                 </button>
               );
             })}
@@ -376,36 +582,63 @@ function FieldRenderer({
     }
     case "checkbox":
       return (
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            disabled={disabled}
-            checked={!!value}
-            onChange={(e) => onChange(e.target.checked)}
-          />
-          <span>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange(!value)}
+          className={
+            "flex min-h-[56px] w-full items-center gap-3 rounded-md border px-4 py-2 text-left text-base transition-colors " +
+            (value
+              ? "border-ok bg-ok/10 text-ink"
+              : "border-ink/20 bg-white text-ink")
+          }
+        >
+          <span
+            className={
+              "flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border-2 text-base font-bold " +
+              (value ? "border-ok bg-ok text-bg" : "border-ink/40")
+            }
+          >
+            {value ? "✓" : ""}
+          </span>
+          <span className="flex-1">
             {field.label}
             {field.required && <span className="ml-1 text-err">*</span>}
           </span>
-        </label>
+        </button>
       );
     case "radio":
       return (
         <div>
           {labelEl}
-          <div className="mt-1 flex flex-wrap gap-3">
-            {(field.options ?? []).map((opt) => (
-              <label key={opt} className="flex items-center gap-1 text-sm">
-                <input
-                  type="radio"
-                  name={field.id}
+          <div className="mt-1.5 flex flex-col gap-2">
+            {(field.options ?? []).map((opt) => {
+              const on = value === opt;
+              return (
+                <button
+                  key={opt}
+                  type="button"
                   disabled={disabled}
-                  checked={value === opt}
-                  onChange={() => onChange(opt)}
-                />
-                {opt}
-              </label>
-            ))}
+                  onClick={() => onChange(opt)}
+                  className={
+                    "flex min-h-[52px] w-full items-center gap-3 rounded-md border px-4 py-2 text-left text-base transition-colors " +
+                    (on
+                      ? "border-ink bg-ink text-bg"
+                      : "border-ink/20 bg-white text-ink")
+                  }
+                >
+                  <span
+                    className={
+                      "flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 " +
+                      (on ? "border-bg" : "border-ink/40")
+                    }
+                  >
+                    {on && <span className="h-2.5 w-2.5 rounded-full bg-bg" />}
+                  </span>
+                  <span>{opt}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       );
@@ -431,11 +664,11 @@ function FieldRenderer({
               const g = await tryGeolocation();
               if (g) onChange(g);
             }}
-            className="mt-1 rounded-md border border-ink/20 px-3 py-1.5 text-xs"
+            className="mt-1.5 min-h-[48px] rounded-md border border-ink/20 px-4 py-2 text-sm"
           >
             {value
-              ? `${(value as { lat: number; lng: number }).lat.toFixed(5)}, ${(value as { lat: number; lng: number }).lng.toFixed(5)}`
-              : "Capture location"}
+              ? `📍 ${(value as { lat: number; lng: number }).lat.toFixed(5)}, ${(value as { lat: number; lng: number }).lng.toFixed(5)}`
+              : "📍 Capture location"}
           </button>
         </div>
       );
@@ -447,9 +680,11 @@ function FieldRenderer({
             type="button"
             disabled={disabled}
             onClick={() => onChange(new Date().toISOString())}
-            className="mt-1 rounded-md border border-ink/20 px-3 py-1.5 text-xs"
+            className="mt-1.5 min-h-[48px] rounded-md border border-ink/20 px-4 py-2 text-sm"
           >
-            {value ? new Date(value as string).toLocaleString() : "Capture timestamp"}
+            {value
+              ? `🕒 ${new Date(value as string).toLocaleString()}`
+              : "🕒 Capture timestamp"}
           </button>
         </div>
       );
@@ -458,19 +693,23 @@ function FieldRenderer({
         <div>
           {labelEl}
           {signed ? (
-            <div className="mt-1 rounded-md border border-ok/40 bg-ok/5 p-3 text-sm">
+            <div className="mt-1.5 rounded-md border border-ok/40 bg-ok/5 p-3 text-sm">
               ✓ Signed by {signed.signer_name} on{" "}
               {new Date(signed.signed_at).toLocaleString()}
             </div>
           ) : canEdit ? (
             <SignaturePad onSign={onSign} />
           ) : (
-            <div className="mt-1 text-sm text-muted">Not signed yet.</div>
+            <div className="mt-1.5 text-sm text-muted">Not signed yet.</div>
           )}
         </div>
       );
     default:
-      return <div className="text-sm text-muted">Field type {field.type} not yet supported.</div>;
+      return (
+        <div className="text-sm text-muted">
+          Field type {field.type} not yet supported.
+        </div>
+      );
   }
 }
 

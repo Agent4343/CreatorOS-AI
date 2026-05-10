@@ -3,19 +3,42 @@ import { requireUser } from "@/lib/auth";
 import { listUserOrgs } from "@/lib/orgs";
 import { supabaseService } from "@/lib/supabase/server";
 
-export default async function SubmissionsPage() {
+export default async function SubmissionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ form_id?: string }>;
+}) {
   const user = await requireUser();
   const orgs = await listUserOrgs(user.id);
   if (orgs.length === 0) redirect("/onboarding");
   const { org } = orgs[0];
+  const { form_id } = await searchParams;
 
   const sb = supabaseService();
-  const { data, error } = await sb
+
+  // Optional form filter — used by the form detail page's "view past
+  // submissions" link to scope the list to that template only.
+  let filterFormName: string | null = null;
+  if (form_id) {
+    const { data: f } = await sb
+      .from("forms")
+      .select("name")
+      .eq("id", form_id)
+      .eq("org_id", org.id)
+      .maybeSingle();
+    filterFormName = (f as { name: string } | null)?.name ?? null;
+  }
+
+  let q = sb
     .from("submissions")
-    .select("id, status, form_id, started_by, created_at, completed_at, forms(name)")
+    .select(
+      "id, status, form_id, started_by, created_at, completed_at, forms(name)",
+    )
     .eq("org_id", org.id)
     .order("created_at", { ascending: false })
     .limit(100);
+  if (form_id) q = q.eq("form_id", form_id);
+  const { data, error } = await q;
   if (error) throw error;
   type Row = {
     id: string;
@@ -30,16 +53,39 @@ export default async function SubmissionsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight">Submissions</h1>
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">
+            {filterFormName ? `Submissions · ${filterFormName}` : "Submissions"}
+          </h1>
+          <p className="mt-1 text-sm text-muted">
+            {filterFormName
+              ? "Each row is a separate filled-in copy of this form."
+              : "Every form fill across your team."}
+          </p>
+        </div>
+        {form_id && (
+          <a
+            href={`/forms/${form_id}`}
+            className="rounded-md border border-ink/20 px-3 py-1.5 text-sm text-ink no-underline"
+          >
+            ← back to template
+          </a>
+        )}
+      </div>
 
       {rows.length === 0 && (
         <div className="rounded-md border border-ink/15 bg-white p-8 text-center">
-          <p className="text-muted">No submissions yet.</p>
+          <p className="text-muted">
+            {filterFormName
+              ? "No one has filled out this form yet."
+              : "No submissions yet."}
+          </p>
           <a
-            href="/forms"
+            href={form_id ? `/forms/${form_id}` : "/forms"}
             className="mt-4 inline-block text-sm text-accent no-underline"
           >
-            Pick a form to start →
+            {form_id ? "Start the first one →" : "Pick a form to start →"}
           </a>
         </div>
       )}

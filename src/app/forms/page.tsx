@@ -22,8 +22,14 @@ export default async function FormsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-baseline justify-between">
-        <h1 className="text-3xl font-bold tracking-tight">Forms</h1>
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Form templates</h1>
+          <p className="mt-1 text-sm text-muted">
+            Reusable blank forms for {org.name}. Anyone on your team can open
+            one and fill out a fresh copy — submissions are saved separately.
+          </p>
+        </div>
         <div className="flex gap-2">
           <a
             href="/forms/import"
