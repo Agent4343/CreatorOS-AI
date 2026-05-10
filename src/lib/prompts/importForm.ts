@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { client, MODEL } from "../anthropic";
+import { client, MODEL, MODEL_FAST } from "../anthropic";
 import { FIELD_TYPES, FormDefinition, FormDefinitionSchema } from "../types";
 
 /**
@@ -120,16 +120,40 @@ const RESPONSE_SCHEMA = {
 
 type ContentBlock = Anthropic.ContentBlockParam;
 
+export type ImportMode = "accurate" | "fast";
+
+export type ImportUsage = {
+  model: string;
+  mode: ImportMode;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_input_tokens: number;
+  cache_creation_input_tokens: number;
+};
+
+export type ImportResult = {
+  schema: FormDefinition;
+  usage: ImportUsage;
+};
+
 /**
- * @param image  Base64-encoded data of the paper form image or PDF.
- * @param mediaType  e.g. "image/png", "image/jpeg", "application/pdf".
+ * @param image     Base64-encoded data of the paper form image or PDF.
+ * @param mediaType e.g. "image/png", "image/jpeg", "application/pdf".
  * @param userHint  Optional one-liner context from the uploader.
+ * @param mode      "accurate" (Opus 4.7, default) or "fast" (Sonnet 4.6).
+ *                  Sonnet is ~5× cheaper and noticeably faster; the
+ *                  accuracy gap is small for digitally-clean PDFs and
+ *                  larger for handwritten / poorly-lit phone photos.
  */
 export async function importPaperForm(args: {
   image: string;
   mediaType: "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "application/pdf";
   userHint?: string;
-}): Promise<FormDefinition> {
+  mode?: ImportMode;
+}): Promise<ImportResult> {
+  const mode: ImportMode = args.mode ?? "accurate";
+  const model = mode === "fast" ? MODEL_FAST : MODEL;
+
   const userText = args.userHint
     ? `# Context from the uploader\n\n${args.userHint}\n\nProduce the form schema now. JSON only.`
     : `Produce the form schema now. JSON only.`;
@@ -159,15 +183,27 @@ export async function importPaperForm(args: {
           { type: "text", text: userText },
         ];
 
+  // System prompt is the same on every import — mark it for caching so
+  // repeated calls in the same 5-min window only pay full price for the
+  // image. Cache write costs ~1.25×; reads ~0.1×. Below the model's
+  // minimum cacheable prefix the marker is silently a no-op (no error,
+  // no effect). The system prompt + schema instructions trend toward
+  // the threshold as we iterate the prompt, so set this up once.
   const response = await client().messages.create({
-    model: MODEL,
+    model,
     max_tokens: 8000,
     thinking: { type: "adaptive" },
     output_config: {
       effort: "high",
       format: { type: "json_schema", schema: RESPONSE_SCHEMA },
     },
-    system: SYSTEM,
+    system: [
+      {
+        type: "text",
+        text: SYSTEM,
+        cache_control: { type: "ephemeral" },
+      },
+    ],
     messages: [{ role: "user", content: sourceBlocks }],
   });
 
@@ -175,5 +211,18 @@ export async function importPaperForm(args: {
   if (!text || text.type !== "text") {
     throw new Error("Import returned no text block");
   }
-  return FormDefinitionSchema.parse(JSON.parse(text.text));
+  const schema = FormDefinitionSchema.parse(JSON.parse(text.text));
+
+  const u = response.usage;
+  return {
+    schema,
+    usage: {
+      model,
+      mode,
+      input_tokens: u.input_tokens ?? 0,
+      output_tokens: u.output_tokens ?? 0,
+      cache_read_input_tokens: u.cache_read_input_tokens ?? 0,
+      cache_creation_input_tokens: u.cache_creation_input_tokens ?? 0,
+    },
+  };
 }

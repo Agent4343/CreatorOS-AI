@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AuthError, requireRole } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
-import { importPaperForm } from "@/lib/prompts/importForm";
+import { importPaperForm, type ImportMode } from "@/lib/prompts/importForm";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -58,7 +58,11 @@ export async function POST(req: NextRequest) {
     const hint = form.get("hint");
     const userHint = typeof hint === "string" ? hint : undefined;
 
-    const definition = await importPaperForm({
+    const modeRaw = form.get("mode");
+    const mode: ImportMode =
+      typeof modeRaw === "string" && modeRaw === "fast" ? "fast" : "accurate";
+
+    const { schema: definition, usage } = await importPaperForm({
       image: base64,
       mediaType: file.type as
         | "image/png"
@@ -67,9 +71,12 @@ export async function POST(req: NextRequest) {
         | "image/webp"
         | "application/pdf",
       userHint,
+      mode,
     });
 
     // Audit the import attempt itself — it's a consequential AI call.
+    // Token counts go in the metadata so admins can spot-check
+    // cost / cache behaviour from the audit log.
     await writeAudit({
       orgId,
       actorUserId: null,
@@ -84,10 +91,11 @@ export async function POST(req: NextRequest) {
           (n, s) => n + s.fields.length,
           0,
         ),
+        ai: usage,
       },
     });
 
-    return NextResponse.json({ schema: definition });
+    return NextResponse.json({ schema: definition, usage });
   } catch (e) {
     if (e instanceof AuthError) return e;
     return NextResponse.json(

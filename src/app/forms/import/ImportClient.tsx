@@ -4,10 +4,13 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { FormDefinition } from "@/lib/types";
 
+type ImportMode = "accurate" | "fast";
+
 export default function ImportClient({ orgId }: { orgId: string }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [hint, setHint] = useState("");
+  const [mode, setMode] = useState<ImportMode>("accurate");
   const [importing, setImporting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,15 +28,14 @@ export default function ImportClient({ orgId }: { orgId: string }) {
       const fd = new FormData();
       fd.append("org_id", orgId);
       fd.append("file", file);
+      fd.append("mode", mode);
       if (hint.trim()) fd.append("hint", hint.trim());
       const res = await fetch("/api/forms/import", { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Import failed");
       // Belt-and-braces: if the AI somehow returned a form with no
       // signature field, append a Sign-off section before the user
-      // sees it. Field-work forms always need one to be useful, and
-      // a clearly-labeled placeholder is better than the user
-      // discovering the gap later.
+      // sees it.
       const schema = ensureSignature(data.schema);
       setDraft(schema);
     } catch (e) {
@@ -76,7 +78,7 @@ export default function ImportClient({ orgId }: { orgId: string }) {
       </div>
 
       {!draft && (
-        <section className="rounded-lg border border-ink/15 bg-white p-5 space-y-3">
+        <section className="rounded-lg border border-ink/15 bg-white p-5 space-y-4">
           <input
             ref={fileRef}
             type="file"
@@ -95,6 +97,59 @@ export default function ImportClient({ orgId }: { orgId: string }) {
               className="mt-1 w-full rounded-md border border-ink/20 bg-white p-2 text-sm"
             />
           </div>
+
+          {/* Mode picker — same UX as a radio group, but full-width
+              buttons so the trade-off is readable on a phone. Default
+              is Accurate; Fast is for cost-sensitive bulk imports of
+              clean PDFs. */}
+          <div>
+            <label className="block text-sm font-medium">Import mode</label>
+            <div className="mt-1.5 grid gap-2 md:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setMode("accurate")}
+                className={
+                  "flex flex-col items-start rounded-md border px-3 py-2 text-left transition-colors " +
+                  (mode === "accurate"
+                    ? "border-ink bg-ink/5"
+                    : "border-ink/20 bg-white")
+                }
+              >
+                <span className="text-sm font-medium">
+                  Accurate
+                  <span className="ml-2 font-mono text-[10px] text-muted">
+                    Opus 4.7
+                  </span>
+                </span>
+                <span className="mt-0.5 text-xs text-muted">
+                  Best for phone photos, handwritten markup, faded
+                  scans. ~$0.40–$1.50 per import.
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("fast")}
+                className={
+                  "flex flex-col items-start rounded-md border px-3 py-2 text-left transition-colors " +
+                  (mode === "fast"
+                    ? "border-ink bg-ink/5"
+                    : "border-ink/20 bg-white")
+                }
+              >
+                <span className="text-sm font-medium">
+                  Fast
+                  <span className="ml-2 font-mono text-[10px] text-muted">
+                    Sonnet 4.6 · ~5× cheaper
+                  </span>
+                </span>
+                <span className="mt-0.5 text-xs text-muted">
+                  Best for digitally-clean PDFs. ~$0.10–$0.30 per
+                  import. Slightly less reliable on bad scans.
+                </span>
+              </button>
+            </div>
+          </div>
+
           <button
             type="button"
             onClick={runImport}
