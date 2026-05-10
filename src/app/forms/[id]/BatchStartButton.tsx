@@ -445,6 +445,44 @@ export default function BatchStartButton({
                 .map((f) => {
                   const a = sharedAssignments[f.id] ?? { email: "" };
                   const mode = fieldMode(f.id);
+                  // Template-level required role wins. If the form
+                  // editor tagged this field with a required role, the
+                  // batch route auto-assigns it — no picker needed (or
+                  // wanted, since the user shouldn't be able to bypass
+                  // the template's choice).
+                  const requiredRole = f.required_role_id
+                    ? roles.find((r) => r.id === f.required_role_id)
+                    : null;
+                  if (f.required_role_id) {
+                    return (
+                      <div
+                        key={f.id}
+                        className="rounded-md border border-ink/15 bg-white p-3"
+                      >
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                          <div className="text-sm font-medium">{f.label}</div>
+                          <span className="rounded-md bg-accent/10 px-2 py-0.5 text-[11px] font-mono text-accent">
+                            role-gated
+                          </span>
+                        </div>
+                        {requiredRole ? (
+                          <div className="mt-1.5 text-xs text-muted">
+                            Auto-assigned to <strong>{requiredRole.name}</strong>
+                            {" "}({requiredRole.members.length} member
+                            {requiredRole.members.length === 1 ? "" : "s"}).
+                            Only role members can sign — set in the form
+                            template.
+                          </div>
+                        ) : (
+                          <div className="mt-1.5 text-xs text-err">
+                            Form template requires a role that no longer
+                            exists. Re-add it in Settings → Role rosters, or
+                            edit the template.
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
                   return (
                     <div
                       key={f.id}
@@ -477,15 +515,6 @@ export default function BatchStartButton({
                               (define one in Settings first)
                             </span>
                           )}
-                        </label>
-                        <label className="flex items-center gap-1.5">
-                          <input
-                            type="radio"
-                            name={`mode-${f.id}`}
-                            checked={mode === "per_inductee"}
-                            onChange={() => setFieldMode(f.id, "per_inductee")}
-                          />
-                          Different per inductee
                         </label>
                       </div>
 
@@ -577,23 +606,6 @@ export default function BatchStartButton({
                         </div>
                       )}
 
-                      {mode === "per_inductee" && (
-                        <div className="mt-1.5 text-xs text-muted">
-                          Enter a role label here; each inductee gets their
-                          own row to fill in the specific person.
-                          <div className="mt-1 grid gap-2 md:grid-cols-2">
-                            <input
-                              type="text"
-                              value={a.role ?? ""}
-                              onChange={(e) =>
-                                setAssignment(f.id, "role", e.target.value)
-                              }
-                              placeholder="Role label (e.g. Supervisor)"
-                              className="rounded-md border border-ink/20 p-1.5 text-sm"
-                            />
-                          </div>
-                        </div>
-                      )}
                     </div>
                   );
                 })}
@@ -642,42 +654,6 @@ export default function BatchStartButton({
                     </button>
                   )}
                 </div>
-                {/* Per-inductee assignment overrides */}
-                {Array.from(perInducteeFieldIds).map((fid) => {
-                  const f = sigFields.find((x) => x.id === fid);
-                  if (!f) return null;
-                  const o = ind.overrides[fid] ?? { email: "" };
-                  const roleLabel =
-                    sharedAssignments[fid]?.role?.trim() || f.label;
-                  return (
-                    <div
-                      key={fid}
-                      className="ml-6 flex flex-wrap items-center gap-2"
-                    >
-                      <span className="text-[11px] uppercase tracking-wider text-muted">
-                        {roleLabel}
-                      </span>
-                      <input
-                        type="text"
-                        value={o.name ?? ""}
-                        onChange={(e) =>
-                          updateOverride(i, fid, "name", e.target.value)
-                        }
-                        placeholder="Name"
-                        className="flex-1 rounded-md border border-ink/20 p-1.5 text-sm"
-                      />
-                      <input
-                        type="email"
-                        value={o.email}
-                        onChange={(e) =>
-                          updateOverride(i, fid, "email", e.target.value)
-                        }
-                        placeholder="email@example.com"
-                        className="flex-1 rounded-md border border-ink/20 p-1.5 text-sm"
-                      />
-                    </div>
-                  );
-                })}
               </div>
             ))}
             <button
@@ -705,6 +681,9 @@ export default function BatchStartButton({
                 {sigFields.map((f) => {
                   const isInductee = f.id === inducteeSigFieldId;
                   const mode = fieldMode(f.id);
+                  const requiredRole = f.required_role_id
+                    ? roles.find((r) => r.id === f.required_role_id)
+                    : null;
                   let detail: ReactNode;
                   if (isInductee) {
                     detail = (
@@ -712,6 +691,19 @@ export default function BatchStartButton({
                         each inductee signs their own (
                         {inductees.filter((i) => i.email.trim()).length}/
                         {inductees.length} have email)
+                      </span>
+                    );
+                  } else if (f.required_role_id) {
+                    detail = requiredRole ? (
+                      <span>
+                        role-gated → any of{" "}
+                        <strong>{requiredRole.name}</strong> (
+                        {requiredRole.members.length} member
+                        {requiredRole.members.length === 1 ? "" : "s"})
+                      </span>
+                    ) : (
+                      <span className="text-err">
+                        template requires a role that no longer exists
                       </span>
                     );
                   } else if (mode === "role") {

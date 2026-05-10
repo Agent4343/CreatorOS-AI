@@ -151,6 +151,47 @@ export async function POST(
       );
     }
 
+    // Template-level required-role gate. If the form template tags
+    // this signature as restricted to a specific role, the signer
+    // must be a current member of that role — independent of who the
+    // assignment names. Catches the "Brad changed companies, his
+    // assignment is stale, but the form was submitted to him" case.
+    // Also lets a form template guarantee "this section can only be
+    // signed by an OIM" in the schema itself, so role membership
+    // doesn't have to be re-litigated per batch.
+    if (target.required_role_id) {
+      const { data: roleRow } = await sb
+        .from("org_roles")
+        .select("name, members")
+        .eq("id", target.required_role_id)
+        .eq("org_id", sRow.org_id)
+        .maybeSingle();
+      if (!roleRow) {
+        return NextResponse.json(
+          {
+            error:
+              "This signature requires a role that no longer exists on this org. Re-add the role in Settings → Role rosters.",
+          },
+          { status: 409 },
+        );
+      }
+      const role = roleRow as {
+        name: string;
+        members: { email: string }[];
+      };
+      const memberEmails = (role.members ?? []).map((m) =>
+        m.email.toLowerCase(),
+      );
+      if (!memberEmails.includes((user.email ?? "").toLowerCase())) {
+        return NextResponse.json(
+          {
+            error: `This signature is reserved for the "${role.name}" role. Only role members can sign — ask an admin to add you in Settings → Role rosters.`,
+          },
+          { status: 403 },
+        );
+      }
+    }
+
     // Snapshot signer identity NOW.
     const signedAt = new Date().toISOString();
     const fp = await requestFingerprint();

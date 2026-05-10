@@ -259,6 +259,70 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Template-level required roles. Any signature field whose schema
+    // declares required_role_id is auto-assigned to that role's
+    // roster, overriding any client-side assignment for that field.
+    // The form template is the source of truth: if the template says
+    // "this field is for the OIM role," every batch routes it to OIM
+    // members regardless of what the BatchStartButton tried to send.
+    // This is what makes "only role members can sign" enforceable
+    // end-to-end — the assignment matches the runtime role gate.
+    const requiredRoleByField = new Map<string, string>();
+    for (const f of allFields) {
+      if (f.type === "signature" && f.required_role_id) {
+        requiredRoleByField.set(f.id, f.required_role_id);
+      }
+    }
+    if (requiredRoleByField.size > 0) {
+      const ids = Array.from(new Set(requiredRoleByField.values()));
+      const { data: requiredRows, error: rrErr } = await sb
+        .from("org_roles")
+        .select("id, name, members")
+        .eq("org_id", body.org_id)
+        .in("id", ids);
+      if (rrErr) throw rrErr;
+      const requiredById = new Map(
+        ((requiredRows ?? []) as Array<{
+          id: string;
+          name: string;
+          members: { email: string; name?: string }[];
+        }>).map((r) => [r.id, r]),
+      );
+      for (const [fid, roleId] of requiredRoleByField) {
+        const role = requiredById.get(roleId);
+        const fieldLabel =
+          fieldById.get(fid)?.label ?? fid;
+        if (!role) {
+          return NextResponse.json(
+            {
+              error: `"${fieldLabel}" requires a role that no longer exists. Re-add it in Settings → Role rosters.`,
+            },
+            { status: 409 },
+          );
+        }
+        if (role.members.length === 0) {
+          return NextResponse.json(
+            {
+              error: `"${fieldLabel}" requires the "${role.name}" role, which has no members. Add members in Settings → Role rosters.`,
+            },
+            { status: 400 },
+          );
+        }
+        const emails = role.members.map((m) => m.email.toLowerCase());
+        const names: Record<string, string> = {};
+        for (const m of role.members) {
+          if (m.name) names[m.email.toLowerCase()] = m.name;
+        }
+        sharedAssignments[fid] = {
+          kind: "role",
+          role_id: role.id,
+          role_label: role.name,
+          member_emails: emails,
+          member_names: Object.keys(names).length > 0 ? names : undefined,
+        };
+      }
+    }
+
     // Validate inductee signature field, if set.
     if (
       body.inductee_signature_field_id &&
@@ -319,6 +383,12 @@ export async function POST(req: NextRequest) {
             `Inductee #${idx + 1}: role assignments aren't supported per inductee`,
           );
         }
+        // Per-inductee specific-person overrides are silently ignored
+        // for role-gated fields. The template's required role wins —
+        // see the auto-assignment block above. Old clients that still
+        // send per-inductee data for a now-role-gated field don't
+        // break, they just get the role assignment instead.
+        if (requiredRoleByField.has(fid)) continue;
         const u = a as { email?: string; name?: string; role?: string };
         const aEmail = (u.email ?? "").trim().toLowerCase();
         if (!aEmail) continue;

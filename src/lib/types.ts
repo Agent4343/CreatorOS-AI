@@ -42,6 +42,11 @@ export const FormFieldSchema: z.ZodType<FormField> = z.lazy(() =>
     auto: z.boolean().optional(),
     /** For signature fields, who is expected to sign. */
     signer_role: z.string().optional(),
+    /** For signature fields: required-role gate. If set, only members
+     * of this org role can sign this field — enforced at sign time
+     * regardless of who the assignment names. UUID of an org role.
+     * Unset = no role restriction (legacy / inductee fields). */
+    required_role_id: z.string().uuid().optional(),
     /** Display-only fields. */
     placeholder: z.string().optional(),
   }),
@@ -59,6 +64,7 @@ export type FormField = {
   default?: string | number | boolean;
   auto?: boolean;
   signer_role?: string;
+  required_role_id?: string;
   placeholder?: string;
 };
 

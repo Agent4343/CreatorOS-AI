@@ -30,5 +30,15 @@ export default async function EditFormPage({
   if (!data) notFound();
   const form = data as Form;
 
-  return <FormEditor form={form} />;
+  // Org's role rosters — drives the per-signature "required role"
+  // dropdown. Empty array = no roles defined yet (link them to
+  // Settings → Role rosters).
+  const { data: rolesData } = await sb
+    .from("org_roles")
+    .select("id, name")
+    .eq("org_id", org.id)
+    .order("name");
+  const roles = (rolesData ?? []) as { id: string; name: string }[];
+
+  return <FormEditor form={form} roles={roles} />;
 }

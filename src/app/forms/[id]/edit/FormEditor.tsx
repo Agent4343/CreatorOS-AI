@@ -33,7 +33,13 @@ const DEFAULT_FIELD_LABEL: Record<FieldType, string> = {
   divider: "Divider",
 };
 
-export default function FormEditor({ form }: { form: Form }) {
+export default function FormEditor({
+  form,
+  roles,
+}: {
+  form: Form;
+  roles: { id: string; name: string }[];
+}) {
   const router = useRouter();
   const [draft, setDraft] = useState<Draft>(form.schema);
   const [saving, setSaving] = useState(false);
@@ -299,6 +305,7 @@ export default function FormEditor({ form }: { form: Form }) {
                 onMove={(dir) => moveField(sIdx, fIdx, dir)}
                 isFirst={fIdx === 0}
                 isLast={fIdx === sec.fields.length - 1}
+                roles={roles}
               />
             ))}
           </div>
@@ -392,6 +399,7 @@ function FieldEditor({
   onMove,
   isFirst,
   isLast,
+  roles,
 }: {
   field: FormField;
   onChange: (patch: Partial<FormField>) => void;
@@ -399,6 +407,7 @@ function FieldEditor({
   onMove: (dir: -1 | 1) => void;
   isFirst: boolean;
   isLast: boolean;
+  roles: { id: string; name: string }[];
 }) {
   const hasOptions =
     field.type === "dropdown" ||
@@ -474,14 +483,45 @@ function FieldEditor({
       )}
 
       {field.type === "signature" && (
-        <input
-          value={field.signer_role ?? ""}
-          onChange={(e) =>
-            onChange({ signer_role: e.target.value || undefined })
-          }
-          placeholder="Signer role (e.g. 'foreman') — optional"
-          className="w-full rounded-md border border-ink/20 bg-white p-1.5 text-xs"
-        />
+        <div className="space-y-2">
+          <input
+            value={field.signer_role ?? ""}
+            onChange={(e) =>
+              onChange({ signer_role: e.target.value || undefined })
+            }
+            placeholder="Signer role label (e.g. 'foreman') — display only"
+            className="w-full rounded-md border border-ink/20 bg-white p-1.5 text-xs"
+          />
+          <label className="block text-xs">
+            <span className="mr-2 text-muted">Required role:</span>
+            <select
+              value={field.required_role_id ?? ""}
+              onChange={(e) =>
+                onChange({ required_role_id: e.target.value || undefined })
+              }
+              className="rounded-md border border-ink/20 bg-white p-1.5 text-xs"
+              disabled={roles.length === 0}
+            >
+              <option value="">
+                — none (open to anyone with assignment) —
+              </option>
+              {roles.map((r) => (
+                <option key={r.id} value={r.id}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+            {roles.length === 0 ? (
+              <span className="ml-2 text-[11px] text-muted">
+                (define roles in Settings → Role rosters first)
+              </span>
+            ) : (
+              <span className="ml-2 text-[11px] text-muted">
+                Only members of this role can sign — enforced at sign time
+              </span>
+            )}
+          </label>
+        </div>
       )}
     </div>
   );
