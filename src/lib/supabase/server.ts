@@ -18,6 +18,7 @@ type Database = {
       submission_signatures: AnyTable;
       submission_email_log: AnyTable;
       audit_logs: AnyTable;
+      org_roles: AnyTable;
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

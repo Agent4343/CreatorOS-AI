@@ -38,7 +38,15 @@ export default async function SubmissionsPage({
   if (form_id) q = q.eq("form_id", form_id);
   const { data, error } = await q;
   if (error) throw error;
-  type Assignment = { email: string; name?: string; role?: string };
+  type Assignment =
+    | { kind?: "user"; email: string; name?: string; role?: string }
+    | {
+        kind: "role";
+        role_id: string;
+        role_label: string;
+        member_emails: string[];
+        member_names?: Record<string, string>;
+      };
   type Row = {
     id: string;
     status: string;
@@ -89,7 +97,14 @@ export default async function SubmissionsPage({
       const signedFields = signedByFieldBySub[r.id] ?? new Set<string>();
       for (const [fieldId, assignment] of Object.entries(a)) {
         if (signedFields.has(fieldId)) continue;
-        if (assignment.email.toLowerCase() === userEmail) {
+        const matches =
+          (assignment as { kind?: string }).kind === "role"
+            ? (assignment as Extract<Assignment, { kind: "role" }>)
+                .member_emails.map((e) => e.toLowerCase())
+                .includes(userEmail)
+            : (assignment as Extract<Assignment, { email: string }>).email
+                ?.toLowerCase() === userEmail;
+        if (matches) {
           waitingOnYou.push({ ...r, waiting: { fieldId, assignment } });
           break;
         }
@@ -182,9 +197,16 @@ export default async function SubmissionsPage({
                     {r.forms?.name ?? "Untitled form"}
                   </div>
                   <div className="mt-0.5 font-mono text-[11px] text-muted">
-                    {r.waiting.assignment.role
-                      ? `Assigned to you as ${r.waiting.assignment.role}`
-                      : "Assigned to you"}
+                    {(() => {
+                      const a = r.waiting.assignment;
+                      if ((a as { kind?: string }).kind === "role") {
+                        return `Assigned to you as ${(a as Extract<Assignment, { kind: "role" }>).role_label}`;
+                      }
+                      const u = a as Extract<Assignment, { email: string }>;
+                      return u.role
+                        ? `Assigned to you as ${u.role}`
+                        : "Assigned to you";
+                    })()}
                     {" · "}
                     started {new Date(r.created_at).toLocaleString()}
                   </div>

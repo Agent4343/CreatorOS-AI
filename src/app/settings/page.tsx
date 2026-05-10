@@ -6,6 +6,7 @@ import type { AuditLog, Membership } from "@/lib/types";
 import BillingSection from "./BillingSection";
 import InviteSection from "./InviteSection";
 import NotificationsSection from "./NotificationsSection";
+import RolesSection, { type Role } from "./RolesSection";
 
 type PendingInvite = {
   id: string;
@@ -53,6 +54,15 @@ export default async function SettingsPage() {
     .select("id, user_id, role, full_name, created_at")
     .eq("org_id", org.id)
     .order("created_at", { ascending: true });
+
+  // Roles are visible to all org members (UI references their labels);
+  // admins can mutate them via the API.
+  const { data: roleRows } = await sb
+    .from("org_roles")
+    .select("id, name, description, members, created_at")
+    .eq("org_id", org.id)
+    .order("name");
+  const roles = (roleRows ?? []) as Role[];
 
   let pendingInvites: PendingInvite[] = [];
   let audit: AuditLog[] = [];
@@ -113,6 +123,8 @@ export default async function SettingsPage() {
           initialEnabled={billing?.notify_on_completion ?? true}
         />
       )}
+
+      {isAdmin && <RolesSection orgId={org.id} initialRoles={roles} />}
 
       {isAdmin && (
         <InviteSection orgId={org.id} initialPending={pendingInvites} />

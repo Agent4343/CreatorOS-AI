@@ -43,6 +43,20 @@ export default async function FormDetailPage({
     .eq("form_id", form.id)
     .eq("org_id", org.id);
 
+  // Org's role rosters for the BatchStartButton's "assign by role"
+  // picker. Empty array if none defined yet.
+  const { data: rolesData } = await sb
+    .from("org_roles")
+    .select("id, name, description, members")
+    .eq("org_id", org.id)
+    .order("name");
+  const roleRows = (rolesData ?? []) as {
+    id: string;
+    name: string;
+    description: string | null;
+    members: { email: string; name?: string }[];
+  }[];
+
   return (
     <div className="space-y-6">
       <div>
@@ -100,6 +114,7 @@ export default async function FormDetailPage({
               formId={form.id}
               orgId={org.id}
               schema={form.schema}
+              roles={roleRows}
             />
           </div>
         )}

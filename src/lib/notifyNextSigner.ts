@@ -87,12 +87,36 @@ export async function notifyNextSigner(args: {
 
     if (!next) return { ok: true, reason: "no remaining assignees" };
 
-    // Don't email if the next assignee is the same person who just signed.
-    const justAssignment = assignments[args.justSignedFieldId];
-    if (
-      justAssignment &&
-      justAssignment.email.toLowerCase() === next.assignment.email.toLowerCase()
-    ) {
+    // Build the recipient list. For specific-person assignments it's
+    // a single email. For role assignments, every roster member gets
+    // notified — anyone can pick it up.
+    const a = next.assignment;
+    let recipients: string[];
+    let roleLabel: string | undefined;
+    let signerName: string | undefined;
+    if ((a as { kind?: string }).kind === "role") {
+      const r = a as Extract<typeof a, { kind: "role" }>;
+      recipients = r.member_emails.map((e) => e.toLowerCase());
+      roleLabel = `Any ${r.role_label}`;
+      signerName = undefined;
+    } else {
+      const u = a as Extract<typeof a, { email: string }>;
+      recipients = [u.email.toLowerCase()];
+      roleLabel = u.role;
+      signerName = u.name;
+    }
+
+    // Don't email anyone who just signed (the email-from-this-signer
+    // chain). For role assignments, exclude the signer's own email
+    // from the recipient set rather than skipping the whole notify —
+    // their teammates still need to know.
+    const justSignerEmail = (
+      assignments[args.justSignedFieldId] as { email?: string } | undefined
+    )?.email?.toLowerCase();
+    if (justSignerEmail) {
+      recipients = recipients.filter((e) => e !== justSignerEmail);
+    }
+    if (recipients.length === 0) {
       return { ok: true, reason: "next signer = previous signer; skip" };
     }
 
@@ -109,15 +133,15 @@ export async function notifyNextSigner(args: {
     const { subject, html } = renderAwaitingSignatureEmail({
       orgName,
       formName,
-      signerName: next.assignment.name,
-      signerEmail: next.assignment.email,
-      role: next.assignment.role,
+      signerName,
+      signerEmail: recipients[0],
+      role: roleLabel,
       link,
       previousSignerName: args.justSignedByName,
     });
 
     const result = await sendEmail({
-      to: [next.assignment.email],
+      to: recipients,
       subject,
       html,
     });
@@ -127,7 +151,7 @@ export async function notifyNextSigner(args: {
       submission_id: s.id,
       org_id: s.org_id,
       kind: `awaiting_signature:${next.fieldId}`,
-      recipients: [next.assignment.email],
+      recipients,
       provider_id: "ok" in result && result.ok ? result.id : null,
       error:
         "ok" in result && !result.ok
@@ -138,7 +162,7 @@ export async function notifyNextSigner(args: {
     });
 
     if ("ok" in result && result.ok) {
-      return { ok: true, sentTo: next.assignment.email };
+      return { ok: true, sentTo: recipients.join(",") };
     }
     if ("skipped" in result) return { ok: false, reason: result.reason };
     return { ok: false, reason: result.error };

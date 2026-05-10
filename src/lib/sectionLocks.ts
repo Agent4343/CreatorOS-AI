@@ -1,18 +1,33 @@
-import type {
-  FormDefinition,
-  FormSection,
-  SignatureAssignments,
+import {
+  type FormDefinition,
+  type FormSection,
+  type SignatureAssignments,
+  assigneeEmails,
+  assigneeLabel,
+  isRoleAssignment,
 } from "./types";
 
 export type SectionLockState =
   /** Open: no signer assignment in this section (or signature is open).
    * Anyone in the org can edit. Legacy behavior. */
   | { state: "open" }
-  /** This section has a signature assigned to *someone else* and the
-   * signature has not yet landed. They have exclusive write access. */
-  | { state: "reserved_for_other"; assigneeEmail: string; assigneeName?: string; assigneeRole?: string }
-  /** Assigned to me and not yet signed — I can edit. */
-  | { state: "reserved_for_me"; assigneeEmail: string; assigneeName?: string; assigneeRole?: string }
+  /** This section has a signature assigned to *someone else* (or to
+   * a role I'm not in) and the signature has not yet landed. They
+   * have exclusive write access. */
+  | {
+      state: "reserved_for_other";
+      /** "Brad (OIM)" or "Any Heli admin" — render-ready. */
+      assigneeLabel: string;
+      /** True when assigned to a role rather than a specific person. */
+      assignedToRole: boolean;
+    }
+  /** Assigned to me (directly or via role membership) and not yet
+   * signed — I can edit. */
+  | {
+      state: "reserved_for_me";
+      assigneeLabel: string;
+      assignedToRole: boolean;
+    }
   /** Signature in this section has been signed → section is frozen
    * for everyone, including the signer. The data hash binds the
    * submission state at sign time; allowing later edits would
@@ -56,19 +71,20 @@ export function computeSectionLock(args: {
   for (const f of sigFields) {
     const a = signatureAssignments[f.id];
     if (!a) continue;
-    if (a.email.toLowerCase() === currentUserEmail.toLowerCase()) {
+    const me = currentUserEmail.toLowerCase();
+    const allowed = assigneeEmails(a);
+    const assignedToRole = isRoleAssignment(a);
+    if (allowed.includes(me)) {
       return {
         state: "reserved_for_me",
-        assigneeEmail: a.email,
-        assigneeName: a.name,
-        assigneeRole: a.role,
+        assigneeLabel: assigneeLabel(a),
+        assignedToRole,
       };
     }
     return {
       state: "reserved_for_other",
-      assigneeEmail: a.email,
-      assigneeName: a.name,
-      assigneeRole: a.role,
+      assigneeLabel: assigneeLabel(a),
+      assignedToRole,
     };
   }
 

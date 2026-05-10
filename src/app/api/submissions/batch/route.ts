@@ -95,10 +95,18 @@ export async function POST(req: NextRequest) {
       if (!EMAIL_RE.test(email)) {
         throw new Error(`Inductee #${idx + 1}: invalid email "${email}"`);
       }
-      // Validate per-inductee assignments if present.
+      // Validate per-inductee assignments if present. Per-inductee
+      // overrides are always specific-person — role-mode is shared,
+      // not per-inductee.
       const perAssignments: SignatureAssignments = {};
       for (const [fid, a] of Object.entries(i.assignments ?? {})) {
-        const aEmail = (a.email ?? "").trim().toLowerCase();
+        if ((a as { kind?: string }).kind === "role") {
+          throw new Error(
+            `Inductee #${idx + 1}: role assignments aren't supported per inductee`,
+          );
+        }
+        const u = a as { email?: string; name?: string; role?: string };
+        const aEmail = (u.email ?? "").trim().toLowerCase();
         if (!aEmail) continue;
         if (!EMAIL_RE.test(aEmail)) {
           throw new Error(
@@ -107,8 +115,8 @@ export async function POST(req: NextRequest) {
         }
         perAssignments[fid] = {
           email: aEmail,
-          name: a.name?.trim() || undefined,
-          role: a.role?.trim() || undefined,
+          name: u.name?.trim() || undefined,
+          role: u.role?.trim() || undefined,
         };
       }
       return { name, email, perAssignments };
@@ -158,8 +166,18 @@ export async function POST(req: NextRequest) {
     );
 
     // Validate shared assignments — every key must be a real signature
-    // field on the form.
+    // field on the form. Two assignment shapes accepted:
+    //  - {email, name?, role?}                    → specific person
+    //  - {kind:"role", role_id, role_label,
+    //     member_emails, member_names?}           → roster snapshot
+    //
+    // For role assignments we re-fetch the roster and re-snapshot
+    // server-side rather than trusting the client. Two reasons:
+    // (a) we want a verified moment-in-time copy of who was on the
+    // roster, with the actual auth-server-known emails; (b) clients
+    // can't be trusted to serialise the right thing.
     const sharedAssignments: SignatureAssignments = {};
+    const referencedRoleIds = new Set<string>();
     for (const [fieldId, assignment] of Object.entries(
       body.shared_assignments ?? {},
     )) {
@@ -169,7 +187,30 @@ export async function POST(req: NextRequest) {
           { status: 400 },
         );
       }
-      const email = (assignment.email ?? "").trim().toLowerCase();
+      if ((assignment as { kind?: string }).kind === "role") {
+        const a = assignment as { role_id?: string };
+        if (!a.role_id) {
+          return NextResponse.json(
+            { error: `Missing role_id on role assignment for ${fieldId}` },
+            { status: 400 },
+          );
+        }
+        referencedRoleIds.add(a.role_id);
+        // Placeholder; we'll fill it in after fetching the roster.
+        sharedAssignments[fieldId] = {
+          kind: "role",
+          role_id: a.role_id,
+          role_label: "",
+          member_emails: [],
+        };
+        continue;
+      }
+      // Specific-person assignment.
+      const email = (
+        (assignment as { email?: string }).email ?? ""
+      )
+        .trim()
+        .toLowerCase();
       if (!email || !EMAIL_RE.test(email)) {
         return NextResponse.json(
           { error: `Invalid email for assignment on ${fieldId}` },
@@ -178,9 +219,57 @@ export async function POST(req: NextRequest) {
       }
       sharedAssignments[fieldId] = {
         email,
-        name: assignment.name?.trim() || undefined,
-        role: assignment.role?.trim() || undefined,
+        name: (assignment as { name?: string }).name?.trim() || undefined,
+        role: (assignment as { role?: string }).role?.trim() || undefined,
       };
+    }
+
+    // Fetch and snapshot every referenced role roster.
+    if (referencedRoleIds.size > 0) {
+      const { data: roleRows, error: roleErr } = await sb
+        .from("org_roles")
+        .select("id, name, members")
+        .eq("org_id", body.org_id)
+        .in("id", Array.from(referencedRoleIds));
+      if (roleErr) throw roleErr;
+      const roleById = new Map(
+        ((roleRows ?? []) as Array<{
+          id: string;
+          name: string;
+          members: { email: string; name?: string }[];
+        }>).map((r) => [r.id, r]),
+      );
+      for (const [fid, a] of Object.entries(sharedAssignments)) {
+        if ((a as { kind?: string }).kind !== "role") continue;
+        const roleId = (a as { role_id: string }).role_id;
+        const role = roleById.get(roleId);
+        if (!role) {
+          return NextResponse.json(
+            { error: `Role ${roleId} not found in this org` },
+            { status: 400 },
+          );
+        }
+        if (role.members.length === 0) {
+          return NextResponse.json(
+            {
+              error: `Role "${role.name}" has no members. Nobody could sign.`,
+            },
+            { status: 400 },
+          );
+        }
+        const emails = role.members.map((m) => m.email.toLowerCase());
+        const names: Record<string, string> = {};
+        for (const m of role.members) {
+          if (m.name) names[m.email.toLowerCase()] = m.name;
+        }
+        sharedAssignments[fid] = {
+          kind: "role",
+          role_id: role.id,
+          role_label: role.name,
+          member_emails: emails,
+          member_names: Object.keys(names).length > 0 ? names : undefined,
+        };
+      }
     }
 
     // Validate inductee signature field, if set.
@@ -268,7 +357,12 @@ export async function POST(req: NextRequest) {
         count: createdRows.length,
         inductees: inductees.map((i) => i.email),
         assignees: Object.fromEntries(
-          Object.entries(sharedAssignments).map(([k, v]) => [k, v.email]),
+          Object.entries(sharedAssignments).map(([k, v]) => [
+            k,
+            (v as { kind?: string }).kind === "role"
+              ? `role:${(v as { role_label: string }).role_label}`
+              : (v as { email: string }).email,
+          ]),
         ),
       },
     });

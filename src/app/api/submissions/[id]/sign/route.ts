@@ -87,20 +87,39 @@ export async function POST(
       );
     }
 
-    // If this signature field is assigned to a specific person, refuse
-    // anyone else. Open-clipboard semantics still apply when no
-    // assignment is set (legacy behavior).
+    // If this signature field is assigned to a specific person OR to
+    // a role roster, refuse signers outside that scope. Open-clipboard
+    // semantics still apply when no assignment is set (legacy).
     const assignments = sRow.signature_assignments ?? {};
     const assignedTo = assignments[body.field_id];
     if (assignedTo) {
       const userEmail = (user.email ?? "").toLowerCase();
-      if (userEmail !== assignedTo.email.toLowerCase()) {
-        return NextResponse.json(
-          {
-            error: `This signature is assigned to ${assignedTo.email}. Sign in as that user to complete it.`,
-          },
-          { status: 403 },
-        );
+      if ((assignedTo as { kind?: string }).kind === "role") {
+        const role = assignedTo as Extract<
+          typeof assignedTo,
+          { kind: "role" }
+        >;
+        const allowed = role.member_emails.map((e) => e.toLowerCase());
+        if (!allowed.includes(userEmail)) {
+          return NextResponse.json(
+            {
+              error: `This signature is reserved for the "${role.role_label}" role. Sign in as a member to complete it.`,
+            },
+            { status: 403 },
+          );
+        }
+      } else {
+        const assignedEmail = (
+          assignedTo as Extract<typeof assignedTo, { email: string }>
+        ).email.toLowerCase();
+        if (userEmail !== assignedEmail) {
+          return NextResponse.json(
+            {
+              error: `This signature is assigned to ${assignedEmail}. Sign in as that user to complete it.`,
+            },
+            { status: 403 },
+          );
+        }
       }
     }
 
@@ -285,13 +304,21 @@ export async function POST(
         }
         // Same field must exist as a signature on the sibling (will be
         // true if they share form_version_id — all forms in a batch do).
-        // Must also be assigned to this user there.
+        // Must also include this user as a valid signer (specific
+        // person OR role roster member).
         const sibAssign = (sib.signature_assignments ?? {})[body.field_id];
         if (!sibAssign) {
           batchResults.siblings_skipped.push({ id: sib.id, reason: "unassigned" });
           continue;
         }
-        if (sibAssign.email.toLowerCase() !== (user.email ?? "").toLowerCase()) {
+        const me = (user.email ?? "").toLowerCase();
+        const isAllowed =
+          (sibAssign as { kind?: string }).kind === "role"
+            ? (sibAssign as { member_emails: string[] }).member_emails
+                .map((e) => e.toLowerCase())
+                .includes(me)
+            : (sibAssign as { email?: string }).email?.toLowerCase() === me;
+        if (!isAllowed) {
           batchResults.siblings_skipped.push({
             id: sib.id,
             reason: "assigned to someone else",

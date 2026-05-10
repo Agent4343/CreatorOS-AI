@@ -5,10 +5,24 @@ import { useRouter } from "next/navigation";
 import type {
   FormDefinition,
   FormField,
+  SignatureAssignment,
   SignatureAssignments,
 } from "@/lib/types";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export type RoleRoster = {
+  id: string;
+  name: string;
+  description: string | null;
+  members: { email: string; name?: string }[];
+};
+
+/** How a single shared signature field is assigned in the batch UI. */
+type SharedMode =
+  | { kind: "user"; email: string; name: string; role: string }
+  | { kind: "role"; role_id: string }
+  | { kind: "per_inductee"; role: string };
 
 type Inductee = {
   name: string;
@@ -30,10 +44,12 @@ export default function BatchStartButton({
   formId,
   orgId,
   schema,
+  roles,
 }: {
   formId: string;
   orgId: string;
   schema: FormDefinition;
+  roles: RoleRoster[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -68,10 +84,17 @@ export default function BatchStartButton({
     textFields[0]?.id ?? "",
   );
 
-  // Per-signature assignments for the non-inductee signers (OIM,
-  // Supervisor, Heli admin). Keyed by field_id; the inductee field is
-  // excluded from this map (it's per-inductee, set below).
-  const [sharedAssignments, setSharedAssignments] = useState<SignatureAssignments>({});
+  /** Per-signature user-mode assignments for the non-inductee signers
+   * (OIM, Supervisor, Heli admin). Keyed by field_id. Role-mode and
+   * per-inductee assignments live in their own state maps.
+   *
+   * Always specific-person here — role-mode entries are tracked in
+   * roleByField; the union'd SignatureAssignments type only appears
+   * at submit time. */
+  type UserAssignment = { email: string; name?: string; role?: string };
+  const [sharedAssignments, setSharedAssignments] = useState<
+    Record<string, UserAssignment>
+  >({});
 
   /** Field IDs the user has marked "Different per inductee". The
    * shared-assignment row hides for these; instead, each inductee
@@ -79,13 +102,42 @@ export default function BatchStartButton({
   const [perInducteeFieldIds, setPerInducteeFieldIds] = useState<Set<string>>(
     new Set(),
   );
-  function togglePerInductee(fieldId: string) {
+
+  /** Field IDs assigned to a *role roster* (any roster member can
+   * sign). Keyed field_id → role_id. Mutually exclusive with
+   * perInducteeFieldIds and with email-based sharedAssignments. */
+  const [roleByField, setRoleByField] = useState<Record<string, string>>({});
+
+  type FieldMode = "user" | "role" | "per_inductee";
+  function fieldMode(fieldId: string): FieldMode {
+    if (perInducteeFieldIds.has(fieldId)) return "per_inductee";
+    if (roleByField[fieldId]) return "role";
+    return "user";
+  }
+  function setFieldMode(fieldId: string, mode: FieldMode) {
+    // Switching modes clears the other two — they're mutually exclusive.
     setPerInducteeFieldIds((cur) => {
       const next = new Set(cur);
-      if (next.has(fieldId)) next.delete(fieldId);
-      else next.add(fieldId);
+      if (mode === "per_inductee") next.add(fieldId);
+      else next.delete(fieldId);
       return next;
     });
+    setRoleByField((cur) => {
+      if (mode === "role") {
+        // Default to the first role if none picked yet.
+        return { ...cur, [fieldId]: cur[fieldId] ?? roles[0]?.id ?? "" };
+      }
+      const { [fieldId]: _, ...rest } = cur;
+      return rest;
+    });
+    if (mode !== "user") {
+      // Clear any email so a stale value doesn't leak through.
+      setSharedAssignments((cur) => {
+        const a = cur[fieldId];
+        if (!a) return cur;
+        return { ...cur, [fieldId]: { ...a, email: "", name: "" } };
+      });
+    }
   }
 
   // Inductee list.
@@ -179,18 +231,56 @@ export default function BatchStartButton({
       }
     }
 
+    // Role-mode assignments must reference a role with at least one
+    // member — otherwise nobody could sign.
+    for (const [fid, roleId] of Object.entries(roleByField)) {
+      const role = roles.find((r) => r.id === roleId);
+      const f = sigFields.find((x) => x.id === fid);
+      if (!role) {
+        return setError(
+          `Assignment for "${f?.label ?? fid}": role no longer exists`,
+        );
+      }
+      if (role.members.length === 0) {
+        return setError(
+          `Role "${role.name}" has no members. Add members in Settings → Role rosters first.`,
+        );
+      }
+    }
+
     setSubmitting(true);
     try {
-      // Shared assignments — drop empty rows and drop fields that
-      // are in per-inductee mode (those go on each inductee instead).
+      // Shared assignments — three sources:
+      //   1) Role-mode: snapshot the roster into a kind:"role" entry.
+      //   2) User-mode: regular {email, name?, role?}.
+      //   3) Per-inductee mode: NOT in cleaned — written per-inductee.
+      // Inductee's own signature field is always per-inductee, never
+      // shared.
       const cleaned: SignatureAssignments = {};
-      for (const [fid, a] of Object.entries(sharedAssignments)) {
-        if (
-          a.email?.trim() &&
-          fid !== inducteeSigFieldId &&
-          !perInducteeFieldIds.has(fid)
-        ) {
-          cleaned[fid] = {
+      for (const f of sigFields) {
+        if (f.id === inducteeSigFieldId) continue;
+        const mode = fieldMode(f.id);
+        if (mode === "per_inductee") continue;
+        if (mode === "role") {
+          const role = roles.find((r) => r.id === roleByField[f.id]);
+          if (!role) continue;
+          cleaned[f.id] = {
+            kind: "role",
+            role_id: role.id,
+            role_label: role.name,
+            member_emails: role.members.map((m) => m.email.toLowerCase()),
+            member_names: Object.fromEntries(
+              role.members
+                .filter((m) => m.name)
+                .map((m) => [m.email.toLowerCase(), m.name!]),
+            ),
+          };
+          continue;
+        }
+        // user mode
+        const a = sharedAssignments[f.id];
+        if (a?.email?.trim()) {
+          cleaned[f.id] = {
             email: a.email.trim().toLowerCase(),
             name: a.name?.trim() || undefined,
             role: a.role?.trim() || undefined,
@@ -315,13 +405,13 @@ export default function BatchStartButton({
           {sigFields.filter((f) => f.id !== inducteeSigFieldId).length > 0 && (
             <div className="space-y-2">
               <h3 className="text-xs font-bold uppercase tracking-wider text-muted">
-                Other signers (assigned to one person each)
+                Other signers
               </h3>
               {sigFields
                 .filter((f) => f.id !== inducteeSigFieldId)
                 .map((f) => {
                   const a = sharedAssignments[f.id] ?? { email: "" };
-                  const perInductee = perInducteeFieldIds.has(f.id);
+                  const mode = fieldMode(f.id);
                   return (
                     <div
                       key={f.id}
@@ -329,32 +419,44 @@ export default function BatchStartButton({
                     >
                       <div className="flex flex-wrap items-baseline justify-between gap-2">
                         <div className="text-sm font-medium">{f.label}</div>
-                        <label className="flex items-center gap-1.5 text-[11px] text-muted">
+                      </div>
+                      <div className="mt-1.5 flex flex-wrap gap-3 text-xs">
+                        <label className="flex items-center gap-1.5">
                           <input
-                            type="checkbox"
-                            checked={perInductee}
-                            onChange={() => togglePerInductee(f.id)}
+                            type="radio"
+                            name={`mode-${f.id}`}
+                            checked={mode === "user"}
+                            onChange={() => setFieldMode(f.id, "user")}
                           />
-                          Different person per inductee
+                          Specific person
+                        </label>
+                        <label className="flex items-center gap-1.5">
+                          <input
+                            type="radio"
+                            name={`mode-${f.id}`}
+                            checked={mode === "role"}
+                            onChange={() => setFieldMode(f.id, "role")}
+                            disabled={roles.length === 0}
+                          />
+                          Role roster
+                          {roles.length === 0 && (
+                            <span className="ml-1 text-[11px] text-muted">
+                              (define one in Settings first)
+                            </span>
+                          )}
+                        </label>
+                        <label className="flex items-center gap-1.5">
+                          <input
+                            type="radio"
+                            name={`mode-${f.id}`}
+                            checked={mode === "per_inductee"}
+                            onChange={() => setFieldMode(f.id, "per_inductee")}
+                          />
+                          Different per inductee
                         </label>
                       </div>
-                      {perInductee ? (
-                        <div className="mt-1.5 text-xs text-muted">
-                          Pick a role label below; enter each inductee&apos;s
-                          person on their row.
-                          <div className="mt-1 grid gap-2 md:grid-cols-2">
-                            <input
-                              type="text"
-                              value={a.role ?? ""}
-                              onChange={(e) =>
-                                setAssignment(f.id, "role", e.target.value)
-                              }
-                              placeholder="Role label (e.g. Supervisor)"
-                              className="rounded-md border border-ink/20 p-1.5 text-sm"
-                            />
-                          </div>
-                        </div>
-                      ) : (
+
+                      {mode === "user" && (
                         <div className="mt-1.5 grid gap-2 md:grid-cols-3">
                           <input
                             type="text"
@@ -362,7 +464,7 @@ export default function BatchStartButton({
                             onChange={(e) =>
                               setAssignment(f.id, "role", e.target.value)
                             }
-                            placeholder="Role (e.g. OIM)"
+                            placeholder="Role label (e.g. OIM)"
                             className="rounded-md border border-ink/20 p-1.5 text-sm"
                           />
                           <input
@@ -385,11 +487,75 @@ export default function BatchStartButton({
                           />
                         </div>
                       )}
+
+                      {mode === "role" && (
+                        <div className="mt-1.5">
+                          <select
+                            value={roleByField[f.id] ?? ""}
+                            onChange={(e) =>
+                              setRoleByField((cur) => ({
+                                ...cur,
+                                [f.id]: e.target.value,
+                              }))
+                            }
+                            className="rounded-md border border-ink/20 p-1.5 text-sm"
+                          >
+                            {roles.map((r) => (
+                              <option key={r.id} value={r.id}>
+                                {r.name} ({r.members.length} member
+                                {r.members.length === 1 ? "" : "s"})
+                              </option>
+                            ))}
+                          </select>
+                          {(() => {
+                            const selected = roles.find(
+                              (r) => r.id === roleByField[f.id],
+                            );
+                            if (!selected) return null;
+                            if (selected.members.length === 0) {
+                              return (
+                                <p className="mt-1 text-[11px] text-err">
+                                  This role has no members yet — add some in
+                                  Settings → Role rosters.
+                                </p>
+                              );
+                            }
+                            return (
+                              <p className="mt-1 text-[11px] text-muted">
+                                Any of {selected.members.length} member
+                                {selected.members.length === 1 ? "" : "s"} can
+                                sign:{" "}
+                                {selected.members
+                                  .map((m) => m.name ?? m.email)
+                                  .join(", ")}
+                              </p>
+                            );
+                          })()}
+                        </div>
+                      )}
+
+                      {mode === "per_inductee" && (
+                        <div className="mt-1.5 text-xs text-muted">
+                          Enter a role label here; each inductee gets their
+                          own row to fill in the specific person.
+                          <div className="mt-1 grid gap-2 md:grid-cols-2">
+                            <input
+                              type="text"
+                              value={a.role ?? ""}
+                              onChange={(e) =>
+                                setAssignment(f.id, "role", e.target.value)
+                              }
+                              placeholder="Role label (e.g. Supervisor)"
+                              className="rounded-md border border-ink/20 p-1.5 text-sm"
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               <p className="text-[11px] text-muted">
-                Leave a row blank to keep that signature open
+                Leave Specific-person rows blank to keep that signature open
                 (anyone in your org can sign it).
               </p>
             </div>

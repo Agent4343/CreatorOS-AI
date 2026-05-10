@@ -119,17 +119,66 @@ export type SubmissionStatus =
   | "completed"
   | "rejected";
 
-export type SignatureAssignment = {
-  /** Email of the person this signature is assigned to. The sign
-   * route refuses signatures from anyone else.  */
-  email: string;
-  /** Display name (e.g. "Brad") shown in the runner + emails. */
-  name?: string;
-  /** Role label (e.g. "OIM", "Supervisor") shown in the inbox. */
-  role?: string;
-};
+/**
+ * Per-field signature assignment, one of two shapes:
+ *
+ * 1) A specific person (legacy + ad-hoc batches):
+ *      { email, name?, role? }
+ *
+ * 2) A role roster — any member of the role can sign (the common
+ *    case for offshore work where 'Heli admin' is a position, not
+ *    a person):
+ *      { kind: "role", role_id, role_label, member_emails, member_names }
+ *
+ * The `kind: "role"` discriminator is required for shape (2). Shape
+ * (1) has no `kind` (or `kind: "user"`). Code that doesn't yet know
+ * about roles still works with shape (1) rows.
+ */
+export type SignatureAssignment =
+  | {
+      kind?: "user";
+      /** Email of the person this signature is assigned to. The sign
+       * route refuses signatures from anyone else. */
+      email: string;
+      /** Display name (e.g. "Brad") shown in the runner + emails. */
+      name?: string;
+      /** Role label (e.g. "OIM", "Supervisor") shown in the inbox. */
+      role?: string;
+    }
+  | {
+      kind: "role";
+      /** UUID of the org_roles row this assignment was snapshotted from. */
+      role_id: string;
+      /** Display label (e.g. "Heli admin") for UI + emails. */
+      role_label: string;
+      /** Snapshot of the role's member emails at batch-start time.
+       * Sign-route checks `signer.email IN member_emails`. */
+      member_emails: string[];
+      /** Optional display names keyed by lowercased email. */
+      member_names?: Record<string, string>;
+    };
 
 export type SignatureAssignments = Record<string, SignatureAssignment>;
+
+/** Helper: true if the assignment is a role-based one. */
+export function isRoleAssignment(
+  a: SignatureAssignment | undefined,
+): a is Extract<SignatureAssignment, { kind: "role" }> {
+  return !!a && (a as { kind?: string }).kind === "role";
+}
+
+/** Returns the lowercased emails that can sign this assignment. */
+export function assigneeEmails(a: SignatureAssignment): string[] {
+  if (isRoleAssignment(a)) return a.member_emails.map((e) => e.toLowerCase());
+  return a.email ? [a.email.toLowerCase()] : [];
+}
+
+/** A short label for the assignee — "Brad (OIM)" or "Any Heli admin". */
+export function assigneeLabel(a: SignatureAssignment): string {
+  if (isRoleAssignment(a)) return `Any ${a.role_label}`;
+  const role = a.role ? ` (${a.role})` : "";
+  return `${a.name ?? a.email}${role}`;
+}
 
 export type Submission = {
   id: string;

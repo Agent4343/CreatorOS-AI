@@ -5,11 +5,14 @@ import {
   type SectionLockState,
   computeAllSectionLocks,
 } from "@/lib/sectionLocks";
-import type {
-  FormDefinition,
-  FormField,
-  SignatureAssignments,
-  SubmissionStatus,
+import {
+  type FormDefinition,
+  type FormField,
+  type SignatureAssignments,
+  type SubmissionStatus,
+  assigneeEmails,
+  assigneeLabel,
+  isRoleAssignment,
 } from "@/lib/types";
 import PhotoField from "./PhotoField";
 import SignaturePad from "./SignaturePad";
@@ -460,7 +463,7 @@ export default function SubmissionRunner({
                     : lock.state === "reserved_for_me"
                       ? " — your turn"
                       : lock.state === "reserved_for_other"
-                        ? ` — waiting for ${lock.assigneeName ?? lock.assigneeEmail}`
+                        ? ` — waiting for ${lock.assigneeLabel}`
                         : "")
                 }
                 className={"min-w-[2.25rem] rounded-md px-2 py-1 text-xs " + cls}
@@ -707,11 +710,12 @@ function SectionLockBanner({ lock }: { lock: SectionLockState }) {
   if (lock.state === "reserved_for_other") {
     return (
       <div className="mt-2 rounded-md border border-warn/40 bg-warn/5 p-2.5 text-xs">
-        <strong className="text-ink">🔒 Waiting for {lock.assigneeName ?? lock.assigneeEmail}</strong>
-        {lock.assigneeRole && (
-          <span className="text-muted"> ({lock.assigneeRole})</span>
-        )}
-        <span className="text-muted"> — this section is read-only until they fill and sign it.</span>
+        <strong className="text-ink">🔒 Waiting for {lock.assigneeLabel}</strong>
+        <span className="text-muted">
+          {" — this section is read-only until "}
+          {lock.assignedToRole ? "any roster member" : "they"}
+          {" fill and sign it."}
+        </span>
       </div>
     );
   }
@@ -1064,24 +1068,23 @@ function FieldRenderer({
         </div>
       );
     case "signature": {
-      const isAssignedToOther =
-        !!assignment &&
-        assignment.email.toLowerCase() !== currentUserEmail.toLowerCase();
-      const isAssignedToMe =
-        !!assignment &&
-        assignment.email.toLowerCase() === currentUserEmail.toLowerCase();
+      const me = currentUserEmail.toLowerCase();
+      const allowed = assignment ? assigneeEmails(assignment) : [];
+      const isAssignedToMe = !!assignment && allowed.includes(me);
+      const isAssignedToOther = !!assignment && !isAssignedToMe;
+      const aLabel = assignment ? assigneeLabel(assignment) : "";
       return (
         <div>
           {labelEl}
           {assignment && (
             <div className="mt-1 text-xs text-muted">
-              Assigned to{" "}
-              <strong className="text-ink">
-                {assignment.name ?? assignment.email}
-              </strong>
-              {assignment.role && <> ({assignment.role})</>}
+              Assigned to <strong className="text-ink">{aLabel}</strong>
               {isAssignedToMe && (
-                <span className="ml-1 text-ok">— that&apos;s you</span>
+                <span className="ml-1 text-ok">
+                  {isRoleAssignment(assignment)
+                    ? "— you're in this role"
+                    : "— that's you"}
+                </span>
               )}
             </div>
           )}
@@ -1092,8 +1095,9 @@ function FieldRenderer({
             </div>
           ) : isAssignedToOther ? (
             <div className="mt-1.5 rounded-md border border-ink/15 bg-bg p-3 text-sm text-muted">
-              Waiting for {assignment.name ?? assignment.email} to sign.
-              The system will refuse a signature from anyone else.
+              Waiting for {aLabel} to sign. The system will refuse a
+              signature from anyone outside that{" "}
+              {isRoleAssignment(assignment) ? "role" : "person"}.
             </div>
           ) : canEdit ? (
             <SignaturePad onSign={onSign} />

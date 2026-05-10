@@ -141,7 +141,7 @@ export async function PATCH(
           if (!shallowEqual(incoming, stored)) {
             const owner =
               lock.state === "reserved_for_other"
-                ? `${lock.assigneeName ?? lock.assigneeEmail}${lock.assigneeRole ? ` (${lock.assigneeRole})` : ""}`
+                ? lock.assigneeLabel
                 : "the previous signer";
             return NextResponse.json(
               {
