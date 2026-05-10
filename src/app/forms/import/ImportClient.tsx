@@ -29,7 +29,13 @@ export default function ImportClient({ orgId }: { orgId: string }) {
       const res = await fetch("/api/forms/import", { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Import failed");
-      setDraft(data.schema);
+      // Belt-and-braces: if the AI somehow returned a form with no
+      // signature field, append a Sign-off section before the user
+      // sees it. Field-work forms always need one to be useful, and
+      // a clearly-labeled placeholder is better than the user
+      // discovering the gap later.
+      const schema = ensureSignature(data.schema);
+      setDraft(schema);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     } finally {
@@ -49,7 +55,9 @@ export default function ImportClient({ orgId }: { orgId: string }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Save failed");
-      router.push(`/forms/${data.form.id}`);
+      // Land in the editor — the import is rarely perfect; the user
+      // almost always wants to tweak something before publishing.
+      router.push(`/forms/${data.form.id}/edit`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
     } finally {
@@ -171,13 +179,44 @@ export default function ImportClient({ orgId }: { orgId: string }) {
           )}
 
           <p className="text-xs text-muted">
-            For this MVP we save the schema as-is. The full editor (drag-drop
-            field reorder, type changes, conditional logic) is the next layer
-            on top — for now you can delete the form and re-import if the
-            schema needs changes.
+            Save lands you on the form editor — drag/drop fields, change
+            types, add or remove signatures, save another version anytime.
           </p>
         </section>
       )}
     </div>
   );
+}
+
+/**
+ * If the imported schema has zero signature fields, append a Sign-off
+ * section with one required signature. The AI prompt explicitly asks
+ * for this; this is the safety net for the cases where Claude misses
+ * a clearly sign-off-shaped form. A signature-less compliance form is
+ * almost never what the user wants, even if the paper is technically
+ * unsigned.
+ */
+function ensureSignature(schema: FormDefinition): FormDefinition {
+  const hasSig = schema.sections.some((s) =>
+    s.fields.some((f) => f.type === "signature"),
+  );
+  if (hasSig) return schema;
+  return {
+    ...schema,
+    sections: [
+      ...schema.sections,
+      {
+        id: `s_signoff_${Date.now()}`,
+        title: "Sign-off",
+        fields: [
+          {
+            id: `f_signature_${Date.now()}`,
+            type: "signature",
+            label: "Signature",
+            required: true,
+          },
+        ],
+      },
+    ],
+  };
 }

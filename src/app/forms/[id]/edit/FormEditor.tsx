@@ -77,6 +77,33 @@ export default function FormEditor({ form }: { form: Form }) {
     }));
   }
 
+  /**
+   * Convenience for the most common pattern: a final section with a
+   * required signature. Saves four clicks vs. add section → name it →
+   * add field → pick signature → mark required.
+   */
+  function addSignoffSection() {
+    const ts = Date.now();
+    setDraft((d) => ({
+      ...d,
+      sections: [
+        ...d.sections,
+        {
+          id: `s_signoff_${ts}`,
+          title: "Sign-off",
+          fields: [
+            {
+              id: `f_signature_${ts}`,
+              type: "signature",
+              label: "Signature",
+              required: true,
+            },
+          ],
+        },
+      ],
+    }));
+  }
+
   function deleteSection(idx: number) {
     if (draft.sections.length <= 1) return;
     setDraft((d) => ({
@@ -276,29 +303,84 @@ export default function FormEditor({ form }: { form: Form }) {
             ))}
           </div>
 
-          <div className="flex flex-wrap gap-1 border-t border-ink/10 pt-3">
-            <span className="self-center text-[11px] font-semibold uppercase tracking-wider text-muted">
-              Add field:
-            </span>
-            {FIELD_TYPES.map((t) => (
+          <div className="space-y-2 border-t border-ink/10 pt-3">
+            {/* Most-common adds first, full-size and labeled. */}
+            <div className="flex flex-wrap gap-2">
               <button
-                key={t}
-                onClick={() => addField(sIdx, t)}
-                className="rounded-md border border-ink/20 px-2 py-1 text-[11px] text-ink hover:border-accent"
+                onClick={() => addField(sIdx, "signature")}
+                className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-bg hover:opacity-90"
               >
-                + {t}
+                + Signature
               </button>
-            ))}
+              <button
+                onClick={() => addField(sIdx, "text")}
+                className="rounded-md border border-ink/30 px-3 py-1.5 text-xs text-ink hover:border-ink/60"
+              >
+                + Text
+              </button>
+              <button
+                onClick={() => addField(sIdx, "checkbox")}
+                className="rounded-md border border-ink/30 px-3 py-1.5 text-xs text-ink hover:border-ink/60"
+              >
+                + Checkbox
+              </button>
+              <button
+                onClick={() => addField(sIdx, "photo")}
+                className="rounded-md border border-ink/30 px-3 py-1.5 text-xs text-ink hover:border-ink/60"
+              >
+                + Photo
+              </button>
+              <button
+                onClick={() => addField(sIdx, "date")}
+                className="rounded-md border border-ink/30 px-3 py-1.5 text-xs text-ink hover:border-ink/60"
+              >
+                + Date
+              </button>
+              <button
+                onClick={() => addField(sIdx, "dropdown")}
+                className="rounded-md border border-ink/30 px-3 py-1.5 text-xs text-ink hover:border-ink/60"
+              >
+                + Dropdown
+              </button>
+            </div>
+            {/* Full type list, smaller, for the long tail. */}
+            <details>
+              <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wider text-muted">
+                More field types
+              </summary>
+              <div className="mt-2 flex flex-wrap gap-1">
+                {FIELD_TYPES.filter(
+                  (t) =>
+                    !["signature", "text", "checkbox", "photo", "date", "dropdown"].includes(t),
+                ).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => addField(sIdx, t)}
+                    className="rounded-md border border-ink/20 px-2 py-1 text-[11px] text-ink hover:border-accent"
+                  >
+                    + {t}
+                  </button>
+                ))}
+              </div>
+            </details>
           </div>
         </section>
       ))}
 
-      <button
-        onClick={addSection}
-        className="rounded-md border border-dashed border-ink/30 px-4 py-3 text-sm text-muted hover:border-ink/60"
-      >
-        + Add section
-      </button>
+      <div className="flex flex-wrap gap-3">
+        <button
+          onClick={addSection}
+          className="rounded-md border border-dashed border-ink/30 px-4 py-3 text-sm text-muted hover:border-ink/60"
+        >
+          + Add section
+        </button>
+        <button
+          onClick={addSignoffSection}
+          className="rounded-md border border-dashed border-accent/50 px-4 py-3 text-sm text-accent hover:border-accent"
+        >
+          + Add Sign-off section (signature included)
+        </button>
+      </div>
     </div>
   );
 }

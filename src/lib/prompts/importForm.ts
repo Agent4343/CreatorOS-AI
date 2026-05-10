@@ -52,6 +52,13 @@ Mark required when:
 - It's the date / inspector name (always required for compliance)
 - The form is meaningless without it
 
+SIGNATURES — non-negotiable
+Field-work and compliance forms always need at least one signature.
+- If the paper has any "Signature:", "Signed by:", "Inspector:", "Reviewed by:" line → add a signature field with appropriate signer_role.
+- If the paper has multiple sign-off lines for different roles (e.g. "Foreman:" and "Safety officer:") → one signature field per role.
+- If the paper looks like an inspection / checklist / service ticket but has NO visible signature line → add a "Sign-off" section at the end with one required signature field labeled "Signature" and signer_role of the most likely role (e.g. "inspector" for inspections, "technician" for service tickets).
+- ALL signature fields must have required: true.
+
 NAMING
 - Field IDs: snake_case derived from the label (e.g. "site_name").
 - Form name: use the paper's actual title verbatim if visible. Otherwise infer.
