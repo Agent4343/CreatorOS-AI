@@ -129,16 +129,24 @@ export default function SubmissionRunner({
             {savedAt && <> · saved {savedAt}</>}
           </p>
         </div>
-        {canEdit && (
-          <button
-            type="button"
-            onClick={save}
-            disabled={saving}
-            className="rounded-md border border-ink/20 px-4 py-2 text-sm text-ink"
+        <div className="flex gap-2">
+          <a
+            href={`/submissions/${submission.id}/print`}
+            className="rounded-md bg-ink px-4 py-2 text-sm text-bg no-underline"
           >
-            {saving ? "Saving…" : "Save"}
-          </button>
-        )}
+            Download / Print
+          </a>
+          {canEdit && (
+            <button
+              type="button"
+              onClick={save}
+              disabled={saving}
+              className="rounded-md border border-ink/20 px-4 py-2 text-sm text-ink"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+          )}
+        </div>
       </div>
 
       {!canEdit && (
