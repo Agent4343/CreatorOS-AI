@@ -363,26 +363,54 @@ export default function BatchStartButton({
 
       {open && (
         <div className="mt-3 space-y-5 rounded-lg border border-ink/15 bg-bg p-4">
-          <div className="text-xs text-muted">
-            Creates one submission per inductee, sharing the same
-            assignees for the non-inductee signature fields. Each
-            assignee gets an email when it&apos;s their turn to sign.
+          <div className="rounded-md border border-accent/30 bg-accent/5 p-3 text-xs">
+            <div className="font-bold text-ink">
+              How a batch works
+            </div>
+            <ul className="mt-1 list-disc space-y-0.5 pl-4 text-ink">
+              <li>
+                One form per inductee — list them below.
+              </li>
+              <li>
+                Each inductee signs <strong>their own</strong> form.
+              </li>
+              <li>
+                Supervisors / admins sign <strong>once</strong>; that
+                signature applies to every inductee in the batch.
+              </li>
+              <li>
+                Everyone gets an email when it&apos;s their turn.
+              </li>
+            </ul>
           </div>
 
-          {/* Per-inductee config: which signature field is the inductee's,
-              and which text field gets the inductee's name. */}
-          <div className="space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-muted">
-              Inductee mapping
-            </h3>
-            <label className="block text-sm">
-              <span className="mr-2 text-muted">Inductee signature field:</span>
+          <div className="space-y-3">
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted">
+                Set up the batch
+              </h3>
+              <p className="text-[11px] text-muted">
+                Tell the system which fields on the form mean what.
+                You only do this once per template — get it right and
+                future batches just work.
+              </p>
+            </div>
+
+            <label className="block rounded-md border border-ink/10 bg-white p-2.5 text-sm">
+              <div className="font-medium">
+                Which signature does each inductee sign?
+              </div>
+              <div className="mt-0.5 text-[11px] text-muted">
+                The signature block that&apos;s for the inductee
+                themselves (not the supervisor or admin). Each
+                inductee will only see their own.
+              </div>
               <select
                 value={inducteeSigFieldId}
                 onChange={(e) => setInducteeSigFieldId(e.target.value)}
-                className="rounded-md border border-ink/20 bg-white px-2 py-1 text-sm"
+                className="mt-1.5 rounded-md border border-ink/20 bg-white px-2 py-1 text-sm"
               >
-                <option value="">— none —</option>
+                <option value="">— pick one —</option>
                 {sigFields.map((f) => (
                   <option key={f.id} value={f.id}>
                     {f.label}
@@ -390,36 +418,48 @@ export default function BatchStartButton({
                 ))}
               </select>
             </label>
-            <label className="block text-sm">
-              <span className="mr-2 text-muted">
-                Pre-fill inductee name into:
-              </span>
+
+            <label className="block rounded-md border border-ink/10 bg-white p-2.5 text-sm">
+              <div className="font-medium">
+                Auto-fill each inductee&apos;s name into:
+              </div>
+              <div className="mt-0.5 text-[11px] text-muted">
+                Saves the inductee from typing their own name. Each
+                form gets that inductee&apos;s name only — usually a
+                &ldquo;Full name&rdquo; or &ldquo;Print name&rdquo;
+                field near the sign-off.
+              </div>
               <select
                 value={inducteeNameFieldId}
                 onChange={(e) => setInducteeNameFieldId(e.target.value)}
-                className="rounded-md border border-ink/20 bg-white px-2 py-1 text-sm"
+                className="mt-1.5 rounded-md border border-ink/20 bg-white px-2 py-1 text-sm"
               >
-                <option value="">— none —</option>
+                <option value="">— don&apos;t auto-fill —</option>
                 {textFields.map((f) => (
                   <option key={f.id} value={f.id}>
                     {f.label}
                   </option>
                 ))}
               </select>
-              <span className="ml-2 text-[11px] text-muted">
-                (this inductee&apos;s name only — used on the sign-off block)
-              </span>
             </label>
-            <label className="block text-sm">
-              <span className="mr-2 text-muted">
-                Show full group roster in:
-              </span>
+
+            <label className="block rounded-md border border-ink/10 bg-white p-2.5 text-sm">
+              <div className="font-medium">
+                Show the full crew list inside:
+              </div>
+              <div className="mt-0.5 text-[11px] text-muted">
+                Drops the names of every inductee in this batch into
+                one field on every form — so when Heli admin opens
+                any inductee&apos;s form, they see the whole crew
+                they&apos;re signing off. Usually a textarea in
+                Section 1.
+              </div>
               <select
                 value={batchRosterFieldId}
                 onChange={(e) => setBatchRosterFieldId(e.target.value)}
-                className="rounded-md border border-ink/20 bg-white px-2 py-1 text-sm"
+                className="mt-1.5 rounded-md border border-ink/20 bg-white px-2 py-1 text-sm"
               >
-                <option value="">— none —</option>
+                <option value="">— don&apos;t show the list —</option>
                 {textFields.map((f) => (
                   <option key={f.id} value={f.id}>
                     {f.label}
@@ -427,10 +467,6 @@ export default function BatchStartButton({
                   </option>
                 ))}
               </select>
-              <span className="ml-2 text-[11px] text-muted">
-                (full list of inductees, shown on every submission&apos;s
-                Section 1 so Heli admin signs for the whole group)
-              </span>
             </label>
           </div>
 
@@ -438,8 +474,14 @@ export default function BatchStartButton({
           {sigFields.filter((f) => f.id !== inducteeSigFieldId).length > 0 && (
             <div className="space-y-2">
               <h3 className="text-xs font-bold uppercase tracking-wider text-muted">
-                Other signers
+                Who signs the supervisor / admin blocks?
               </h3>
+              <p className="text-[11px] text-muted">
+                These are the signatures that sign{" "}
+                <strong>once for the whole batch</strong>. Role-gated
+                fields are filled in automatically based on the form
+                template.
+              </p>
               {sigFields
                 .filter((f) => f.id !== inducteeSigFieldId)
                 .map((f) => {
@@ -610,8 +652,8 @@ export default function BatchStartButton({
                   );
                 })}
               <p className="text-[11px] text-muted">
-                Leave Specific-person rows blank to keep that signature open
-                (anyone in your org can sign it).
+                Leave a Specific-person row blank to keep that
+                signature open — anyone in your org can sign it.
               </p>
             </div>
           )}
