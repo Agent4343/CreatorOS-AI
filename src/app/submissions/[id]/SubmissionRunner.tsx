@@ -23,6 +23,23 @@ type SignedField = {
   signed_at: string;
 };
 
+type Starter = {
+  user_id: string;
+  name: string;
+  is_self: boolean;
+};
+
+type LastEditor = {
+  user_id: string;
+  name: string;
+  at: string | null;
+};
+
+type Teammate = {
+  user_id: string;
+  name: string;
+};
+
 type SaveState = "idle" | "saving" | "saved" | "dirty" | "error";
 
 /**
@@ -50,12 +67,18 @@ export default function SubmissionRunner({
   signedFields,
   canEdit,
   currentUserId,
+  starter,
+  lastEditor,
+  teammates,
 }: {
   submission: SubmissionShape;
   schema: FormDefinition;
   signedFields: SignedField[];
   canEdit: boolean;
   currentUserId: string;
+  starter: Starter;
+  lastEditor: LastEditor | null;
+  teammates: Teammate[];
 }) {
   const [data, setData] = useState<Record<string, unknown>>(submission.data ?? {});
   const [status, setStatus] = useState<SubmissionStatus>(submission.status);
@@ -232,6 +255,19 @@ export default function SubmissionRunner({
         <ProgressBar current={currentSection + 1} total={totalSections} />
       </div>
 
+      {/* Handoff banner: who started, who edited last, and a button
+          to hand off to a teammate. Only shows while the form is
+          editable — once it's signed/completed, the audit trail is
+          locked and a banner about handoffs is just noise. */}
+      {canEdit && (
+        <HandoffBanner
+          submissionId={submission.id}
+          starter={starter}
+          lastEditor={lastEditor}
+          teammates={teammates}
+        />
+      )}
+
       {!canEdit && (
         <div className="mt-3 rounded-md border border-ink/15 bg-white p-3 text-sm text-muted">
           Read-only — submission is {status}.
@@ -354,6 +390,171 @@ export default function SubmissionRunner({
       </div>
     </div>
   );
+}
+
+function HandoffBanner({
+  submissionId,
+  starter,
+  lastEditor,
+  teammates,
+}: {
+  submissionId: string;
+  starter: Starter;
+  lastEditor: LastEditor | null;
+  teammates: Teammate[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [emailing, setEmailing] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const url =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/submissions/${submissionId}`
+      : "";
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setError("Couldn't copy — long-press the URL bar to copy manually.");
+    }
+  }
+
+  async function shareNative() {
+    if (typeof navigator === "undefined" || !navigator.share) {
+      copyLink();
+      return;
+    }
+    try {
+      await navigator.share({
+        title: "FieldForm — please finish this form",
+        text: `Can you finish this form? ${starter.is_self ? "I" : starter.name} started it.`,
+        url,
+      });
+    } catch {
+      // User cancelled — no-op.
+    }
+  }
+
+  async function emailTeammate(t: Teammate) {
+    setEmailing(t.user_id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/submissions/${submissionId}/handoff`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to_user_id: t.user_id }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? "Couldn't send");
+      setOpen(false);
+      alert(`Sent ${t.name} a link to finish this form.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't send");
+    } finally {
+      setEmailing(null);
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-md border border-ink/15 bg-white p-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <div className="text-xs text-muted">
+            Started by{" "}
+            <strong className="text-ink">
+              {starter.is_self ? "you" : starter.name}
+            </strong>
+            {lastEditor && (
+              <>
+                {" · "}
+                last edited by{" "}
+                <strong className="text-ink">{lastEditor.name}</strong>
+                {lastEditor.at && <> · {timeAgo(lastEditor.at)}</>}
+              </>
+            )}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="rounded-md border border-ink/20 px-3 py-1.5 text-xs"
+        >
+          {open ? "Close" : "Hand off ↗"}
+        </button>
+      </div>
+
+      {open && (
+        <div className="mt-3 space-y-3 border-t border-ink/10 pt-3">
+          <p className="text-xs text-muted">
+            Anyone on your team can already pick up this form from
+            their submissions list. Use the options below if you want
+            to nudge a specific teammate.
+          </p>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={shareNative}
+              className="rounded-md bg-ink px-3 py-2 text-xs text-bg"
+            >
+              Share link
+            </button>
+            <button
+              type="button"
+              onClick={copyLink}
+              className="rounded-md border border-ink/20 px-3 py-2 text-xs"
+            >
+              {copied ? "✓ Copied" : "Copy link"}
+            </button>
+          </div>
+
+          {teammates.length > 0 && (
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                Email a teammate
+              </div>
+              <div className="mt-1.5 flex flex-col gap-1.5">
+                {teammates.slice(0, 12).map((t) => (
+                  <button
+                    key={t.user_id}
+                    type="button"
+                    onClick={() => emailTeammate(t)}
+                    disabled={emailing === t.user_id}
+                    className="flex items-center justify-between rounded-md border border-ink/15 bg-bg px-3 py-2 text-left text-sm disabled:opacity-50"
+                  >
+                    <span>{t.name}</span>
+                    <span className="text-xs text-muted">
+                      {emailing === t.user_id ? "Sending…" : "Email →"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="rounded-md border border-err/40 bg-err/5 p-2 text-xs text-err">
+              {error}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function timeAgo(iso: string): string {
+  const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m}m ago`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.round(h / 24);
+  return `${d}d ago`;
 }
 
 function ProgressBar({ current, total }: { current: number; total: number }) {

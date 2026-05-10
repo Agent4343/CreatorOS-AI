@@ -34,9 +34,20 @@ export async function GET(
 }
 
 /**
- * Save the submission's in-progress data. Cannot be called once the
- * submission is signed/completed (that would silently invalidate every
- * signature on the row).
+ * Save the submission's in-progress data.
+ *
+ * Permission model: any member of the submission's org can save —
+ * "open clipboard" semantics so a teammate can pick up a half-filled
+ * form when the original worker can't finish (shift change, called
+ * away, equipment failure). Identity is preserved via:
+ *
+ *   - last_edited_by + last_edited_at on every save
+ *   - audit_logs entry the first time a non-starter edits
+ *   - signatures still bind the final-state attestation to specific
+ *     people via the data_hash
+ *
+ * Cannot be called once the submission is signed/completed (that
+ * would silently invalidate every signature on the row).
  */
 export async function PATCH(
   req: NextRequest,
@@ -53,7 +64,7 @@ export async function PATCH(
     const sb = supabaseService();
     const { data: existing, error: getErr } = await sb
       .from("submissions")
-      .select("id, org_id, status, started_by")
+      .select("id, org_id, status, started_by, last_edited_by")
       .eq("id", id)
       .maybeSingle();
     if (getErr) throw getErr;
@@ -65,20 +76,11 @@ export async function PATCH(
       org_id: string;
       status: string;
       started_by: string;
+      last_edited_by: string | null;
     };
 
-    const m = await requireMembership(e.org_id);
+    await requireMembership(e.org_id);
 
-    // Members can only edit their own in-progress submissions. Admins
-    // can edit anyone's pre-signature.
-    const isOwner = e.started_by === user.id;
-    const isAdmin = m.role === "owner" || m.role === "admin";
-    if (!isOwner && !isAdmin) {
-      return NextResponse.json(
-        { error: "Cannot edit another member's submission" },
-        { status: 403 },
-      );
-    }
     if (e.status === "completed" || e.status === "rejected") {
       return NextResponse.json(
         { error: `Cannot edit a ${e.status} submission` },
@@ -86,14 +88,36 @@ export async function PATCH(
       );
     }
 
+    const now = new Date().toISOString();
     const { error: updErr } = await sb
       .from("submissions")
       .update({
         data: body.data,
-        updated_at: new Date().toISOString(),
+        updated_at: now,
+        last_edited_by: user.id,
+        last_edited_at: now,
       })
       .eq("id", id);
     if (updErr) throw updErr;
+
+    // First time someone other than the starter touches the form,
+    // log a handoff event. Subsequent saves by the same person don't
+    // get re-logged (would flood the audit log; auto-save runs every
+    // 5 sec).
+    const isFirstHandoff =
+      e.started_by !== user.id && e.last_edited_by !== user.id;
+    if (isFirstHandoff) {
+      await writeAudit({
+        orgId: e.org_id,
+        actorUserId: user.id,
+        action: "submission.picked_up",
+        resourceType: "submission",
+        resourceId: e.id,
+        metadata: {
+          original_starter: e.started_by,
+        },
+      });
+    }
 
     return NextResponse.json({ ok: true });
   } catch (err) {

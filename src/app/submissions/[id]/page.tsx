@@ -29,15 +29,12 @@ export default async function SubmissionPage({
   };
   const s = submission as unknown as Joined;
 
-  // Verify the user is in this submission's org.
   const memberOrg = orgs.find((o) => o.org.id === s.org_id);
   if (!memberOrg) notFound();
 
   const schema = s.form_versions?.schema;
   if (!schema) throw new Error("Form schema missing for submission");
 
-  // Pull existing signatures for this submission so the UI knows
-  // which signature fields are already signed (and by whom).
   const { data: sigs } = await sb
     .from("submission_signatures")
     .select("field_id, signer_name, signed_at")
@@ -48,12 +45,33 @@ export default async function SubmissionPage({
     signed_at: string;
   }[];
 
-  const isOwner = s.started_by === user.id;
-  const role = memberOrg.role;
-  const canEdit =
-    s.status !== "completed" &&
-    s.status !== "rejected" &&
-    (isOwner || role === "owner" || role === "admin");
+  // Resolve user_id → name for handoff UI: starter, last editor, and
+  // every teammate who can pick up the form. Single org-scoped query.
+  const { data: members } = await sb
+    .from("memberships")
+    .select("user_id, full_name, role")
+    .eq("org_id", s.org_id);
+  const memberRows =
+    (members ?? []) as { user_id: string; full_name: string | null; role: string }[];
+  const nameById: Record<string, string> = {};
+  for (const m of memberRows) {
+    nameById[m.user_id] = m.full_name ?? "Teammate";
+  }
+
+  // Open-clipboard permission: any member can continue an in-progress
+  // form. The PATCH route enforces the same rule and audits cross-user
+  // edits.
+  const canEdit = s.status !== "completed" && s.status !== "rejected";
+
+  // Teammates available for handoff = everyone in the org except the
+  // current user. We don't try to filter to "active" workers — small
+  // crews + offline shifts make any "online" signal noisy.
+  const teammates = memberRows
+    .filter((m) => m.user_id !== user.id)
+    .map((m) => ({
+      user_id: m.user_id,
+      name: m.full_name ?? "Teammate",
+    }));
 
   return (
     <SubmissionRunner
@@ -68,6 +86,21 @@ export default async function SubmissionPage({
       signedFields={signed}
       canEdit={canEdit}
       currentUserId={user.id}
+      starter={{
+        user_id: s.started_by,
+        name: nameById[s.started_by] ?? "Teammate",
+        is_self: s.started_by === user.id,
+      }}
+      lastEditor={
+        s.last_edited_by && s.last_edited_by !== s.started_by
+          ? {
+              user_id: s.last_edited_by,
+              name: nameById[s.last_edited_by] ?? "Teammate",
+              at: s.last_edited_at ?? null,
+            }
+          : null
+      }
+      teammates={teammates}
     />
   );
 }
