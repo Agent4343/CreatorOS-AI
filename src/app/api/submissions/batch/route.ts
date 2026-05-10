@@ -34,7 +34,14 @@ const MAX_INDUCTEES = 50;
  *      // if set, that signature field is assigned to the inductee on
  *      // each per-inductee submission
  *   inductee_name_field_id?: string,
- *      // if set, that text field is pre-filled with the inductee's name
+ *      // if set, that text field is pre-filled with THIS inductee's
+ *      // name on each per-inductee submission
+ *   batch_roster_field_id?: string,
+ *      // if set, that text/textarea field is pre-filled on every
+ *      // submission with a comma-separated list of ALL inductees in
+ *      // the batch. Lets the Heli admin's Section 1 show "Today's
+ *      // group: Ashley, Marcus, Priya, Tom" so the signature
+ *      // attests to the whole group, not just one row.
  * }
  *
  * Returns {batch_id, submissions: [...]} — caller can navigate to the
@@ -58,6 +65,7 @@ export async function POST(req: NextRequest) {
       shared_assignments?: SignatureAssignments;
       inductee_signature_field_id?: string;
       inductee_name_field_id?: string;
+      batch_roster_field_id?: string;
     };
 
     if (!body.org_id || !body.form_id) {
@@ -297,11 +305,37 @@ export async function POST(req: NextRequest) {
         );
       }
     }
+    // Validate roster field, if set. textarea is preferred so each
+    // name lands on its own line, but text is allowed too — in which
+    // case the names are comma-joined.
+    if (body.batch_roster_field_id) {
+      const f = fieldById.get(body.batch_roster_field_id);
+      if (!f || (f.type !== "text" && f.type !== "textarea")) {
+        return NextResponse.json(
+          {
+            error: `batch_roster_field_id ${body.batch_roster_field_id} is not a text field`,
+          },
+          { status: 400 },
+        );
+      }
+    }
 
     // Sanitize shared_data: drop keys that aren't on the schema.
     const sharedData: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(body.shared_data ?? {})) {
       if (fieldById.has(k)) sharedData[k] = v;
+    }
+
+    // Pre-compute the roster string. Same value on every submission
+    // in the batch — that's the whole point: the Heli admin sees the
+    // entire induction group in their Section 1, not just one name.
+    if (body.batch_roster_field_id) {
+      const rosterField = fieldById.get(body.batch_roster_field_id)!;
+      const roster =
+        rosterField.type === "textarea"
+          ? inductees.map((i) => i.name).join("\n")
+          : inductees.map((i) => i.name).join(", ");
+      sharedData[body.batch_roster_field_id] = roster;
     }
 
     // Build N submission rows.

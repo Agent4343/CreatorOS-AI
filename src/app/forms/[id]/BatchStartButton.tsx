@@ -84,6 +84,13 @@ export default function BatchStartButton({
     textFields[0]?.id ?? "",
   );
 
+  // Optional: pick a text/textarea field on the form that should
+  // receive the full list of inductee names on every submission.
+  // Lets the Heli admin's Section 1 show "Today's group: Ashley,
+  // Marcus, Priya, Tom" so their signature attests to the whole
+  // group. Empty string = don't populate any field.
+  const [batchRosterFieldId, setBatchRosterFieldId] = useState<string>("");
+
   /** Per-signature user-mode assignments for the non-inductee signers
    * (OIM, Supervisor, Heli admin). Keyed by field_id. Role-mode and
    * per-inductee assignments live in their own state maps.
@@ -323,6 +330,7 @@ export default function BatchStartButton({
           shared_assignments: cleaned,
           inductee_signature_field_id: inducteeSigFieldId || undefined,
           inductee_name_field_id: inducteeNameFieldId || undefined,
+          batch_roster_field_id: batchRosterFieldId || undefined,
         }),
       });
       const body = await res.json().catch(() => ({}));
@@ -398,6 +406,31 @@ export default function BatchStartButton({
                   </option>
                 ))}
               </select>
+              <span className="ml-2 text-[11px] text-muted">
+                (this inductee&apos;s name only — used on the sign-off block)
+              </span>
+            </label>
+            <label className="block text-sm">
+              <span className="mr-2 text-muted">
+                Show full group roster in:
+              </span>
+              <select
+                value={batchRosterFieldId}
+                onChange={(e) => setBatchRosterFieldId(e.target.value)}
+                className="rounded-md border border-ink/20 bg-white px-2 py-1 text-sm"
+              >
+                <option value="">— none —</option>
+                {textFields.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.label}
+                    {f.type === "textarea" ? " (textarea)" : ""}
+                  </option>
+                ))}
+              </select>
+              <span className="ml-2 text-[11px] text-muted">
+                (full list of inductees, shown on every submission&apos;s
+                Section 1 so Heli admin signs for the whole group)
+              </span>
             </label>
           </div>
 
