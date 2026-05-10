@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   FormDefinition,
   FormField,
+  SignatureAssignments,
   SubmissionStatus,
 } from "@/lib/types";
 import PhotoField from "./PhotoField";
@@ -67,18 +68,22 @@ export default function SubmissionRunner({
   signedFields,
   canEdit,
   currentUserId,
+  currentUserEmail,
   starter,
   lastEditor,
   teammates,
+  signatureAssignments,
 }: {
   submission: SubmissionShape;
   schema: FormDefinition;
   signedFields: SignedField[];
   canEdit: boolean;
   currentUserId: string;
+  currentUserEmail: string;
   starter: Starter;
   lastEditor: LastEditor | null;
   teammates: Teammate[];
+  signatureAssignments: SignatureAssignments;
 }) {
   const [data, setData] = useState<Record<string, unknown>>(submission.data ?? {});
   const [status, setStatus] = useState<SubmissionStatus>(submission.status);
@@ -292,8 +297,10 @@ export default function SubmissionRunner({
                 signed={signed.find((s) => s.field_id === f.id)}
                 onSign={(img) => applySignature(f.id, img)}
                 currentUserId={currentUserId}
+                currentUserEmail={currentUserEmail}
                 orgId={submission.org_id}
                 submissionId={submission.id}
+                assignment={signatureAssignments[f.id]}
               />
             ))}
           </div>
@@ -622,8 +629,10 @@ function FieldRenderer({
   canEdit,
   signed,
   onSign,
+  currentUserEmail,
   orgId,
   submissionId,
+  assignment,
 }: {
   field: FormField;
   value: unknown;
@@ -632,8 +641,10 @@ function FieldRenderer({
   signed?: SignedField;
   onSign: (img: string) => void;
   currentUserId: string;
+  currentUserEmail: string;
   orgId: string;
   submissionId: string;
+  assignment?: SignatureAssignments[string];
 }) {
   const disabled = !canEdit || !!signed;
   const labelEl = (
@@ -889,14 +900,37 @@ function FieldRenderer({
           </button>
         </div>
       );
-    case "signature":
+    case "signature": {
+      const isAssignedToOther =
+        !!assignment &&
+        assignment.email.toLowerCase() !== currentUserEmail.toLowerCase();
+      const isAssignedToMe =
+        !!assignment &&
+        assignment.email.toLowerCase() === currentUserEmail.toLowerCase();
       return (
         <div>
           {labelEl}
+          {assignment && (
+            <div className="mt-1 text-xs text-muted">
+              Assigned to{" "}
+              <strong className="text-ink">
+                {assignment.name ?? assignment.email}
+              </strong>
+              {assignment.role && <> ({assignment.role})</>}
+              {isAssignedToMe && (
+                <span className="ml-1 text-ok">— that&apos;s you</span>
+              )}
+            </div>
+          )}
           {signed ? (
             <div className="mt-1.5 rounded-md border border-ok/40 bg-ok/5 p-3 text-sm">
               ✓ Signed by {signed.signer_name} on{" "}
               {new Date(signed.signed_at).toLocaleString()}
+            </div>
+          ) : isAssignedToOther ? (
+            <div className="mt-1.5 rounded-md border border-ink/15 bg-bg p-3 text-sm text-muted">
+              Waiting for {assignment.name ?? assignment.email} to sign.
+              The system will refuse a signature from anyone else.
             </div>
           ) : canEdit ? (
             <SignaturePad onSign={onSign} />
@@ -905,6 +939,7 @@ function FieldRenderer({
           )}
         </div>
       );
+    }
     default:
       return (
         <div className="text-sm text-muted">

@@ -119,6 +119,18 @@ export type SubmissionStatus =
   | "completed"
   | "rejected";
 
+export type SignatureAssignment = {
+  /** Email of the person this signature is assigned to. The sign
+   * route refuses signatures from anyone else.  */
+  email: string;
+  /** Display name (e.g. "Brad") shown in the runner + emails. */
+  name?: string;
+  /** Role label (e.g. "OIM", "Supervisor") shown in the inbox. */
+  role?: string;
+};
+
+export type SignatureAssignments = Record<string, SignatureAssignment>;
+
 export type Submission = {
   id: string;
   org_id: string;
@@ -129,6 +141,12 @@ export type Submission = {
   started_by: string;
   last_edited_by: string | null;
   last_edited_at: string | null;
+  /** Set when the submission was created as part of a batch. All
+   * submissions in the same batch share this UUID. */
+  batch_id: string | null;
+  /** Maps signature field_id → assigned signer. Empty for legacy
+   * "anyone can sign" submissions. */
+  signature_assignments: SignatureAssignments;
   completed_at: string | null;
   created_at: string;
   updated_at: string;

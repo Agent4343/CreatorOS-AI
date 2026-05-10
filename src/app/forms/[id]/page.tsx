@@ -3,6 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { listUserOrgs } from "@/lib/orgs";
 import { supabaseService } from "@/lib/supabase/server";
 import type { Form } from "@/lib/types";
+import BatchStartButton from "./BatchStartButton";
 import StartSubmissionButton from "./StartSubmissionButton";
 
 export default async function FormDetailPage({
@@ -93,6 +94,15 @@ export default async function FormDetailPage({
             View past submissions →
           </a>
         </div>
+        {isAdmin && (
+          <div className="mt-3">
+            <BatchStartButton
+              formId={form.id}
+              orgId={org.id}
+              schema={form.schema}
+            />
+          </div>
+        )}
       </div>
 
       <section className="space-y-3">

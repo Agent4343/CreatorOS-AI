@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AuthError, requestFingerprint, requireMembership, requireUser } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
+import { notifyNextSigner } from "@/lib/notifyNextSigner";
 import { notifySubmissionCompleted } from "@/lib/notifySubmissionCompleted";
 import { computeSignatureHash } from "@/lib/signatures";
 import { supabaseService } from "@/lib/supabase/server";
-import type { FormDefinition } from "@/lib/types";
+import type { FormDefinition, SignatureAssignments } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -51,7 +52,7 @@ export async function POST(
 
     const { data: submission, error: subErr } = await sb
       .from("submissions")
-      .select("id, org_id, status, data, form_id, form_version_id")
+      .select("id, org_id, status, data, form_id, form_version_id, signature_assignments")
       .eq("id", id)
       .maybeSingle();
     if (subErr) throw subErr;
@@ -65,6 +66,7 @@ export async function POST(
       data: Record<string, unknown>;
       form_id: string;
       form_version_id: string;
+      signature_assignments: SignatureAssignments | null;
     };
 
     await requireMembership(sRow.org_id);
@@ -74,6 +76,23 @@ export async function POST(
         { error: `Cannot sign a ${sRow.status} submission` },
         { status: 409 },
       );
+    }
+
+    // If this signature field is assigned to a specific person, refuse
+    // anyone else. Open-clipboard semantics still apply when no
+    // assignment is set (legacy behavior).
+    const assignments = sRow.signature_assignments ?? {};
+    const assignedTo = assignments[body.field_id];
+    if (assignedTo) {
+      const userEmail = (user.email ?? "").toLowerCase();
+      if (userEmail !== assignedTo.email.toLowerCase()) {
+        return NextResponse.json(
+          {
+            error: `This signature is assigned to ${assignedTo.email}. Sign in as that user to complete it.`,
+          },
+          { status: 403 },
+        );
+      }
     }
 
     // Pull the form schema to validate the field_id is real and
@@ -159,12 +178,25 @@ export async function POST(
       notifySubmissionCompleted(sRow.id).catch((err) => {
         console.error("[sign] notification email failed", err);
       });
-    } else if (sRow.status === "in_progress") {
-      // We have at least one signature now; mark awaiting_signature.
-      await sb
-        .from("submissions")
-        .update({ status: "awaiting_signature" })
-        .eq("id", sRow.id);
+    } else {
+      // Not done yet — if there's a next assigned signer in the
+      // chain, email them now. No-op if no remaining assignments.
+      notifyNextSigner({
+        submissionId: sRow.id,
+        justSignedFieldId: body.field_id,
+        justSignedByName:
+          user.user_metadata?.full_name ?? user.email ?? undefined,
+      }).catch((err) => {
+        console.error("[sign] next-signer email failed", err);
+      });
+
+      if (sRow.status === "in_progress") {
+        // We have at least one signature now; mark awaiting_signature.
+        await sb
+          .from("submissions")
+          .update({ status: "awaiting_signature" })
+          .eq("id", sRow.id);
+      }
     }
 
     await writeAudit({

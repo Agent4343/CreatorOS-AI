@@ -2,7 +2,11 @@ import { notFound, redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { listUserOrgs } from "@/lib/orgs";
 import { supabaseService } from "@/lib/supabase/server";
-import type { FormDefinition, Submission } from "@/lib/types";
+import type {
+  FormDefinition,
+  SignatureAssignments,
+  Submission,
+} from "@/lib/types";
 import SubmissionRunner from "./SubmissionRunner";
 
 export default async function SubmissionPage({
@@ -73,6 +77,8 @@ export default async function SubmissionPage({
       name: m.full_name ?? "Teammate",
     }));
 
+  const assignments: SignatureAssignments = s.signature_assignments ?? {};
+
   return (
     <SubmissionRunner
       submission={{
@@ -86,6 +92,7 @@ export default async function SubmissionPage({
       signedFields={signed}
       canEdit={canEdit}
       currentUserId={user.id}
+      currentUserEmail={(user.email ?? "").toLowerCase()}
       starter={{
         user_id: s.started_by,
         name: nameById[s.started_by] ?? "Teammate",
@@ -101,6 +108,7 @@ export default async function SubmissionPage({
           : null
       }
       teammates={teammates}
+      signatureAssignments={assignments}
     />
   );
 }
