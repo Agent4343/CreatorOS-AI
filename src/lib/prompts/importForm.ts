@@ -67,15 +67,14 @@ Return JSON only, matching the schema.`;
 const RESPONSE_SCHEMA = {
   type: "object",
   properties: {
-    name: { type: "string", minLength: 1, maxLength: 200 },
-    description: { type: "string", maxLength: 2000 },
+    name: { type: "string" },
+    description: { type: "string" },
     sections: {
       type: "array",
-      minItems: 1,
       items: {
         type: "object",
         properties: {
-          id: { type: "string", minLength: 1 },
+          id: { type: "string" },
           title: { type: "string" },
           description: { type: "string" },
           fields: {
@@ -83,14 +82,18 @@ const RESPONSE_SCHEMA = {
             items: {
               type: "object",
               properties: {
-                id: { type: "string", minLength: 1 },
+                id: { type: "string" },
                 type: { type: "string", enum: [...FIELD_TYPES] },
                 label: { type: "string" },
                 description: { type: "string" },
                 required: { type: "boolean" },
                 options: { type: "array", items: { type: "string" } },
                 multiple: { type: "boolean" },
-                max: { type: "integer", minimum: 1 },
+                // Note: numeric / string / array constraints (minimum,
+                // maxLength, minItems, etc.) are unsupported by Claude's
+                // structured-output schema. We let the model produce the
+                // shape; zod validates the constraints on parse below.
+                max: { type: "integer" },
                 signer_role: { type: "string" },
                 placeholder: { type: "string" },
               },
