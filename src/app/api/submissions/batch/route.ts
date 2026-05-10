@@ -18,11 +18,18 @@ const MAX_INDUCTEES = 50;
  *
  * Body: {
  *   org_id, form_id,
- *   inductees:    [{name, email}],   // one submission per entry
+ *   inductees: [{
+ *      name, email,
+ *      // optional per-inductee assignments — wins over shared
+ *      // assignments for the same field_id. Use this when Brad-the-
+ *      // foreman supervises 3 inductees and Sam-the-foreman supervises
+ *      // the other 5.
+ *      assignments?: {field_id: {email, name?, role?}},
+ *   }],
  *   shared_data?: {field_id: value}, // pre-fills sections 1-2 etc.
  *   shared_assignments: {field_id: {email, name?, role?}},
- *      // assignments that apply to every submission in the batch (OIM,
- *      // Supervisor, Heli admin)
+ *      // applies to every submission in the batch (Heli admin, OIM,
+ *      // and possibly Supervisor when it's the same person for all)
  *   inductee_signature_field_id?: string,
  *      // if set, that signature field is assigned to the inductee on
  *      // each per-inductee submission
@@ -42,7 +49,11 @@ export async function POST(req: NextRequest) {
     const body = (await req.json()) as {
       org_id?: string;
       form_id?: string;
-      inductees?: Array<{ name?: string; email?: string }>;
+      inductees?: Array<{
+        name?: string;
+        email?: string;
+        assignments?: SignatureAssignments;
+      }>;
       shared_data?: Record<string, unknown>;
       shared_assignments?: SignatureAssignments;
       inductee_signature_field_id?: string;
@@ -84,7 +95,23 @@ export async function POST(req: NextRequest) {
       if (!EMAIL_RE.test(email)) {
         throw new Error(`Inductee #${idx + 1}: invalid email "${email}"`);
       }
-      return { name, email };
+      // Validate per-inductee assignments if present.
+      const perAssignments: SignatureAssignments = {};
+      for (const [fid, a] of Object.entries(i.assignments ?? {})) {
+        const aEmail = (a.email ?? "").trim().toLowerCase();
+        if (!aEmail) continue;
+        if (!EMAIL_RE.test(aEmail)) {
+          throw new Error(
+            `Inductee #${idx + 1}: invalid email for field ${fid}`,
+          );
+        }
+        perAssignments[fid] = {
+          email: aEmail,
+          name: a.name?.trim() || undefined,
+          role: a.role?.trim() || undefined,
+        };
+      }
+      return { name, email, perAssignments };
     });
 
     // Load + validate form schema; verify referenced field IDs exist.
@@ -196,7 +223,13 @@ export async function POST(req: NextRequest) {
       if (body.inductee_name_field_id) {
         data[body.inductee_name_field_id] = inductee.name;
       }
-      const assignments: SignatureAssignments = { ...sharedAssignments };
+      // Merge order matters: shared baseline, then per-inductee
+      // overrides (different supervisor for different inductees),
+      // then the inductee's own signature field assignment.
+      const assignments: SignatureAssignments = {
+        ...sharedAssignments,
+        ...inductee.perAssignments,
+      };
       if (body.inductee_signature_field_id) {
         assignments[body.inductee_signature_field_id] = {
           email: inductee.email,

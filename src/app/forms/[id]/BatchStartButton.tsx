@@ -10,7 +10,13 @@ import type {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-type Inductee = { name: string; email: string };
+type Inductee = {
+  name: string;
+  email: string;
+  /** Per-inductee assignment overrides — for signature fields toggled
+   * 'Different per inductee'. Keyed by field_id. */
+  overrides: Record<string, { email: string; name?: string; role?: string }>;
+};
 
 /**
  * "Start a batch" — create N submissions in one go, with role-based
@@ -67,18 +73,60 @@ export default function BatchStartButton({
   // excluded from this map (it's per-inductee, set below).
   const [sharedAssignments, setSharedAssignments] = useState<SignatureAssignments>({});
 
+  /** Field IDs the user has marked "Different per inductee". The
+   * shared-assignment row hides for these; instead, each inductee
+   * gets a column to enter that person's email. */
+  const [perInducteeFieldIds, setPerInducteeFieldIds] = useState<Set<string>>(
+    new Set(),
+  );
+  function togglePerInductee(fieldId: string) {
+    setPerInducteeFieldIds((cur) => {
+      const next = new Set(cur);
+      if (next.has(fieldId)) next.delete(fieldId);
+      else next.add(fieldId);
+      return next;
+    });
+  }
+
   // Inductee list.
   const [inductees, setInductees] = useState<Inductee[]>([
-    { name: "", email: "" },
+    { name: "", email: "", overrides: {} },
   ]);
 
   function addInductee() {
-    setInductees([...inductees, { name: "", email: "" }]);
+    setInductees([...inductees, { name: "", email: "", overrides: {} }]);
   }
-  function updateInductee(i: number, key: keyof Inductee, value: string) {
+  function updateInductee(
+    i: number,
+    key: "name" | "email",
+    value: string,
+  ) {
     setInductees(
       inductees.map((ind, idx) =>
         idx === i ? { ...ind, [key]: value } : ind,
+      ),
+    );
+  }
+  function updateOverride(
+    i: number,
+    fieldId: string,
+    key: "email" | "name" | "role",
+    value: string,
+  ) {
+    setInductees(
+      inductees.map((ind, idx) =>
+        idx === i
+          ? {
+              ...ind,
+              overrides: {
+                ...ind.overrides,
+                [fieldId]: {
+                  ...(ind.overrides[fieldId] ?? { email: "" }),
+                  [key]: value,
+                },
+              },
+            }
+          : ind,
       ),
     );
   }
@@ -117,12 +165,31 @@ export default function BatchStartButton({
       }
     }
 
+    // Per-inductee assignments must all have an email when their
+    // field is in per-inductee mode.
+    for (const fid of perInducteeFieldIds) {
+      for (const [idx, ind] of inductees.entries()) {
+        const o = ind.overrides[fid];
+        if (!o?.email?.trim() || !EMAIL_RE.test(o.email.trim())) {
+          const f = sigFields.find((x) => x.id === fid);
+          return setError(
+            `Inductee #${idx + 1}: missing/invalid email for "${f?.label ?? fid}"`,
+          );
+        }
+      }
+    }
+
     setSubmitting(true);
     try {
-      // Strip empty assignments (no email).
+      // Shared assignments — drop empty rows and drop fields that
+      // are in per-inductee mode (those go on each inductee instead).
       const cleaned: SignatureAssignments = {};
       for (const [fid, a] of Object.entries(sharedAssignments)) {
-        if (a.email?.trim() && fid !== inducteeSigFieldId) {
+        if (
+          a.email?.trim() &&
+          fid !== inducteeSigFieldId &&
+          !perInducteeFieldIds.has(fid)
+        ) {
           cleaned[fid] = {
             email: a.email.trim().toLowerCase(),
             name: a.name?.trim() || undefined,
@@ -137,10 +204,32 @@ export default function BatchStartButton({
         body: JSON.stringify({
           org_id: orgId,
           form_id: formId,
-          inductees: inductees.map((i) => ({
-            name: i.name.trim(),
-            email: i.email.trim().toLowerCase(),
-          })),
+          inductees: inductees.map((i) => {
+            const perAssignments: SignatureAssignments = {};
+            for (const fid of perInducteeFieldIds) {
+              const o = i.overrides[fid];
+              if (o?.email?.trim()) {
+                perAssignments[fid] = {
+                  email: o.email.trim().toLowerCase(),
+                  name: o.name?.trim() || undefined,
+                  // Fall back to the shared assignment's role label so
+                  // the runner shows "Supervisor" not blank.
+                  role:
+                    o.role?.trim() ||
+                    sharedAssignments[fid]?.role?.trim() ||
+                    undefined,
+                };
+              }
+            }
+            return {
+              name: i.name.trim(),
+              email: i.email.trim().toLowerCase(),
+              assignments:
+                Object.keys(perAssignments).length > 0
+                  ? perAssignments
+                  : undefined,
+            };
+          }),
           shared_assignments: cleaned,
           inductee_signature_field_id: inducteeSigFieldId || undefined,
           inductee_name_field_id: inducteeNameFieldId || undefined,
@@ -232,41 +321,70 @@ export default function BatchStartButton({
                 .filter((f) => f.id !== inducteeSigFieldId)
                 .map((f) => {
                   const a = sharedAssignments[f.id] ?? { email: "" };
+                  const perInductee = perInducteeFieldIds.has(f.id);
                   return (
                     <div
                       key={f.id}
                       className="rounded-md border border-ink/15 bg-white p-3"
                     >
-                      <div className="text-sm font-medium">{f.label}</div>
-                      <div className="mt-1.5 grid gap-2 md:grid-cols-3">
-                        <input
-                          type="text"
-                          value={a.role ?? ""}
-                          onChange={(e) =>
-                            setAssignment(f.id, "role", e.target.value)
-                          }
-                          placeholder="Role (e.g. OIM)"
-                          className="rounded-md border border-ink/20 p-1.5 text-sm"
-                        />
-                        <input
-                          type="text"
-                          value={a.name ?? ""}
-                          onChange={(e) =>
-                            setAssignment(f.id, "name", e.target.value)
-                          }
-                          placeholder="Name"
-                          className="rounded-md border border-ink/20 p-1.5 text-sm"
-                        />
-                        <input
-                          type="email"
-                          value={a.email ?? ""}
-                          onChange={(e) =>
-                            setAssignment(f.id, "email", e.target.value)
-                          }
-                          placeholder="Email"
-                          className="rounded-md border border-ink/20 p-1.5 text-sm"
-                        />
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <div className="text-sm font-medium">{f.label}</div>
+                        <label className="flex items-center gap-1.5 text-[11px] text-muted">
+                          <input
+                            type="checkbox"
+                            checked={perInductee}
+                            onChange={() => togglePerInductee(f.id)}
+                          />
+                          Different person per inductee
+                        </label>
                       </div>
+                      {perInductee ? (
+                        <div className="mt-1.5 text-xs text-muted">
+                          Pick a role label below; enter each inductee&apos;s
+                          person on their row.
+                          <div className="mt-1 grid gap-2 md:grid-cols-2">
+                            <input
+                              type="text"
+                              value={a.role ?? ""}
+                              onChange={(e) =>
+                                setAssignment(f.id, "role", e.target.value)
+                              }
+                              placeholder="Role label (e.g. Supervisor)"
+                              className="rounded-md border border-ink/20 p-1.5 text-sm"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-1.5 grid gap-2 md:grid-cols-3">
+                          <input
+                            type="text"
+                            value={a.role ?? ""}
+                            onChange={(e) =>
+                              setAssignment(f.id, "role", e.target.value)
+                            }
+                            placeholder="Role (e.g. OIM)"
+                            className="rounded-md border border-ink/20 p-1.5 text-sm"
+                          />
+                          <input
+                            type="text"
+                            value={a.name ?? ""}
+                            onChange={(e) =>
+                              setAssignment(f.id, "name", e.target.value)
+                            }
+                            placeholder="Name"
+                            className="rounded-md border border-ink/20 p-1.5 text-sm"
+                          />
+                          <input
+                            type="email"
+                            value={a.email ?? ""}
+                            onChange={(e) =>
+                              setAssignment(f.id, "email", e.target.value)
+                            }
+                            placeholder="Email"
+                            className="rounded-md border border-ink/20 p-1.5 text-sm"
+                          />
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -283,33 +401,74 @@ export default function BatchStartButton({
               Inductees ({inductees.length})
             </h3>
             {inductees.map((ind, i) => (
-              <div key={i} className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-xs text-muted">
-                  #{i + 1}
-                </span>
-                <input
-                  type="text"
-                  value={ind.name}
-                  onChange={(e) => updateInductee(i, "name", e.target.value)}
-                  placeholder="Full name"
-                  className="flex-1 rounded-md border border-ink/20 p-1.5 text-sm"
-                />
-                <input
-                  type="email"
-                  value={ind.email}
-                  onChange={(e) => updateInductee(i, "email", e.target.value)}
-                  placeholder="email@example.com"
-                  className="flex-1 rounded-md border border-ink/20 p-1.5 text-sm"
-                />
-                {inductees.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={() => removeInductee(i)}
-                    className="text-xs text-muted hover:text-err"
-                  >
-                    remove
-                  </button>
-                )}
+              <div
+                key={i}
+                className="space-y-1.5 rounded-md border border-ink/10 bg-white p-2"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-xs text-muted">
+                    #{i + 1}
+                  </span>
+                  <input
+                    type="text"
+                    value={ind.name}
+                    onChange={(e) => updateInductee(i, "name", e.target.value)}
+                    placeholder="Full name"
+                    className="flex-1 rounded-md border border-ink/20 p-1.5 text-sm"
+                  />
+                  <input
+                    type="email"
+                    value={ind.email}
+                    onChange={(e) => updateInductee(i, "email", e.target.value)}
+                    placeholder="email@example.com"
+                    className="flex-1 rounded-md border border-ink/20 p-1.5 text-sm"
+                  />
+                  {inductees.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeInductee(i)}
+                      className="text-xs text-muted hover:text-err"
+                    >
+                      remove
+                    </button>
+                  )}
+                </div>
+                {/* Per-inductee assignment overrides */}
+                {Array.from(perInducteeFieldIds).map((fid) => {
+                  const f = sigFields.find((x) => x.id === fid);
+                  if (!f) return null;
+                  const o = ind.overrides[fid] ?? { email: "" };
+                  const roleLabel =
+                    sharedAssignments[fid]?.role?.trim() || f.label;
+                  return (
+                    <div
+                      key={fid}
+                      className="ml-6 flex flex-wrap items-center gap-2"
+                    >
+                      <span className="text-[11px] uppercase tracking-wider text-muted">
+                        {roleLabel}
+                      </span>
+                      <input
+                        type="text"
+                        value={o.name ?? ""}
+                        onChange={(e) =>
+                          updateOverride(i, fid, "name", e.target.value)
+                        }
+                        placeholder="Name"
+                        className="flex-1 rounded-md border border-ink/20 p-1.5 text-sm"
+                      />
+                      <input
+                        type="email"
+                        value={o.email}
+                        onChange={(e) =>
+                          updateOverride(i, fid, "email", e.target.value)
+                        }
+                        placeholder="email@example.com"
+                        className="flex-1 rounded-md border border-ink/20 p-1.5 text-sm"
+                      />
+                    </div>
+                  );
+                })}
               </div>
             ))}
             <button

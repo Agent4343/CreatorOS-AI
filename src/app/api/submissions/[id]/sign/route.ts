@@ -34,6 +34,12 @@ export async function POST(
       field_id?: string;
       signature_image?: string;
       geolocation?: { lat: number; lng: number; accuracy?: number };
+      /** If true and this submission is in a batch, also sign the
+       * same field on every sibling submission where the same user is
+       * assigned. Saves Heli admin / OIM from signing 8 times in a row.
+       * Each sibling gets its own signature row with its own
+       * data_hash bound to its own submission data. */
+      batch_apply?: boolean;
     };
     if (!body.field_id || typeof body.signature_image !== "string") {
       return NextResponse.json(
@@ -52,7 +58,9 @@ export async function POST(
 
     const { data: submission, error: subErr } = await sb
       .from("submissions")
-      .select("id, org_id, status, data, form_id, form_version_id, signature_assignments")
+      .select(
+        "id, org_id, status, data, form_id, form_version_id, signature_assignments, batch_id",
+      )
       .eq("id", id)
       .maybeSingle();
     if (subErr) throw subErr;
@@ -67,6 +75,7 @@ export async function POST(
       form_id: string;
       form_version_id: string;
       signature_assignments: SignatureAssignments | null;
+      batch_id: string | null;
     };
 
     await requireMembership(sRow.org_id);
@@ -212,9 +221,182 @@ export async function POST(
       },
     });
 
+    // ----------------------------------------------------------
+    // Optional batch apply: sign the same field on every sibling
+    // submission in the same batch where this user is also the
+    // assignee. Saves Heli admin / OIM from signing 5-8 times.
+    //
+    // Each sibling gets its own signature row with its own data_hash
+    // bound to that sibling's submission data — tamper-evidence is
+    // preserved per submission. The signer's identity, image,
+    // timestamp, IP, and geolocation are identical across them
+    // (it's literally the same human signing the same moment).
+    // ----------------------------------------------------------
+    const batchResults: {
+      siblings_signed: number;
+      siblings_skipped: { id: string; reason: string }[];
+      siblings_completed: number;
+    } = { siblings_signed: 0, siblings_skipped: [], siblings_completed: 0 };
+
+    if (body.batch_apply && sRow.batch_id) {
+      const { data: sibsRows } = await sb
+        .from("submissions")
+        .select(
+          "id, org_id, status, data, signature_assignments, form_version_id",
+        )
+        .eq("batch_id", sRow.batch_id)
+        .eq("org_id", sRow.org_id)
+        .neq("id", sRow.id);
+      const sibs = (sibsRows ?? []) as {
+        id: string;
+        org_id: string;
+        status: string;
+        data: Record<string, unknown>;
+        signature_assignments: SignatureAssignments | null;
+        form_version_id: string;
+      }[];
+
+      // Existing signatures on every sibling for this field — skip if
+      // already signed.
+      const sibIds = sibs.map((sib) => sib.id);
+      const alreadySignedSet = new Set<string>();
+      if (sibIds.length > 0) {
+        const { data: existing } = await sb
+          .from("submission_signatures")
+          .select("submission_id")
+          .in("submission_id", sibIds)
+          .eq("field_id", body.field_id);
+        for (const row of (existing ?? []) as { submission_id: string }[]) {
+          alreadySignedSet.add(row.submission_id);
+        }
+      }
+
+      for (const sib of sibs) {
+        if (sib.status === "completed" || sib.status === "rejected") {
+          batchResults.siblings_skipped.push({ id: sib.id, reason: sib.status });
+          continue;
+        }
+        if (sib.form_version_id !== sRow.form_version_id) {
+          batchResults.siblings_skipped.push({
+            id: sib.id,
+            reason: "different form version",
+          });
+          continue;
+        }
+        // Same field must exist as a signature on the sibling (will be
+        // true if they share form_version_id — all forms in a batch do).
+        // Must also be assigned to this user there.
+        const sibAssign = (sib.signature_assignments ?? {})[body.field_id];
+        if (!sibAssign) {
+          batchResults.siblings_skipped.push({ id: sib.id, reason: "unassigned" });
+          continue;
+        }
+        if (sibAssign.email.toLowerCase() !== (user.email ?? "").toLowerCase()) {
+          batchResults.siblings_skipped.push({
+            id: sib.id,
+            reason: "assigned to someone else",
+          });
+          continue;
+        }
+        if (alreadySignedSet.has(sib.id)) {
+          batchResults.siblings_skipped.push({ id: sib.id, reason: "already signed" });
+          continue;
+        }
+
+        // Compute hash for THIS sibling's data, not the source's.
+        const sibHash = computeSignatureHash({
+          submissionData: sib.data ?? {},
+          signerUserId: user.id,
+          signedAt,
+        });
+
+        const { error: sibInsErr } = await sb
+          .from("submission_signatures")
+          .insert({
+            submission_id: sib.id,
+            org_id: sib.org_id,
+            field_id: body.field_id,
+            signer_user_id: user.id,
+            signer_name:
+              user.user_metadata?.full_name ?? user.email ?? "Unknown",
+            signer_email: user.email ?? "",
+            signature_image: body.signature_image,
+            signed_at: signedAt,
+            ip_address: fp.ip_address,
+            user_agent: fp.user_agent,
+            geolocation: body.geolocation ?? null,
+            data_hash: sibHash,
+          });
+        if (sibInsErr) {
+          batchResults.siblings_skipped.push({
+            id: sib.id,
+            reason: `insert failed: ${sibInsErr.message}`,
+          });
+          continue;
+        }
+        batchResults.siblings_signed++;
+
+        // Re-evaluate sibling completion. requiredSigIds is the same
+        // across siblings (same form_version_id).
+        const { data: sigsForSib } = await sb
+          .from("submission_signatures")
+          .select("field_id")
+          .eq("submission_id", sib.id);
+        const sigIdsForSib = new Set(
+          ((sigsForSib ?? []) as { field_id: string }[]).map((r) => r.field_id),
+        );
+        const sibAllSigned = requiredSigIds.every((fid) =>
+          sigIdsForSib.has(fid),
+        );
+        if (sibAllSigned) {
+          await sb
+            .from("submissions")
+            .update({
+              status: "completed",
+              completed_at: new Date().toISOString(),
+            })
+            .eq("id", sib.id);
+          batchResults.siblings_completed++;
+          notifySubmissionCompleted(sib.id).catch((err) => {
+            console.error("[sign-batch] completion email failed", err);
+          });
+        } else {
+          if (sib.status === "in_progress") {
+            await sb
+              .from("submissions")
+              .update({ status: "awaiting_signature" })
+              .eq("id", sib.id);
+          }
+          notifyNextSigner({
+            submissionId: sib.id,
+            justSignedFieldId: body.field_id,
+            justSignedByName:
+              user.user_metadata?.full_name ?? user.email ?? undefined,
+          }).catch((err) => {
+            console.error("[sign-batch] next-signer email failed", err);
+          });
+        }
+      }
+
+      await writeAudit({
+        orgId: sRow.org_id,
+        actorUserId: user.id,
+        action: "submission.batch_signed",
+        resourceType: "submission",
+        resourceId: sRow.batch_id,
+        metadata: {
+          field_id: body.field_id,
+          siblings_signed: batchResults.siblings_signed,
+          siblings_completed: batchResults.siblings_completed,
+          siblings_skipped: batchResults.siblings_skipped,
+        },
+      });
+    }
+
     return NextResponse.json({
       ok: true,
       completed: allRequiredSigned,
+      batch: body.batch_apply ? batchResults : undefined,
     });
   } catch (e) {
     if (e instanceof AuthError) return e;

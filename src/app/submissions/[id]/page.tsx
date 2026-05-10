@@ -79,6 +79,19 @@ export default async function SubmissionPage({
 
   const assignments: SignatureAssignments = s.signature_assignments ?? {};
 
+  // Count other submissions in the same batch — used by the runner to
+  // surface 'Apply to N siblings' and 'Sign for all' affordances.
+  let batchSiblingCount = 0;
+  if (s.batch_id) {
+    const { count } = await sb
+      .from("submissions")
+      .select("id", { count: "exact", head: true })
+      .eq("batch_id", s.batch_id)
+      .eq("org_id", s.org_id)
+      .neq("id", s.id);
+    batchSiblingCount = count ?? 0;
+  }
+
   return (
     <SubmissionRunner
       submission={{
@@ -109,6 +122,8 @@ export default async function SubmissionPage({
       }
       teammates={teammates}
       signatureAssignments={assignments}
+      batchId={s.batch_id ?? null}
+      batchSiblingCount={batchSiblingCount}
     />
   );
 }

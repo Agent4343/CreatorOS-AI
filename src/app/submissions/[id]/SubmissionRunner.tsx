@@ -77,6 +77,8 @@ export default function SubmissionRunner({
   lastEditor,
   teammates,
   signatureAssignments,
+  batchId,
+  batchSiblingCount,
 }: {
   submission: SubmissionShape;
   schema: FormDefinition;
@@ -88,6 +90,8 @@ export default function SubmissionRunner({
   lastEditor: LastEditor | null;
   teammates: Teammate[];
   signatureAssignments: SignatureAssignments;
+  batchId: string | null;
+  batchSiblingCount: number;
 }) {
   const [data, setData] = useState<Record<string, unknown>>(submission.data ?? {});
   const [status, setStatus] = useState<SubmissionStatus>(submission.status);
@@ -229,6 +233,19 @@ export default function SubmissionRunner({
         if (!ok) return;
       }
 
+      // If this submission is in a batch and the same user is also
+      // assigned to this field on every sibling, ask whether to sign
+      // once for the whole batch. Skips the prompt for ad-hoc
+      // submissions.
+      let batchApply = false;
+      if (batchId && batchSiblingCount > 0) {
+        batchApply = window.confirm(
+          `Apply this signature to all ${batchSiblingCount + 1} inductees in this batch?\n\n` +
+            `OK = sign for everyone in the batch at once.\n` +
+            `Cancel = sign only this one.`,
+        );
+      }
+
       const geo = await tryGeolocation();
       const res = await fetch(`/api/submissions/${submission.id}/sign`, {
         method: "POST",
@@ -237,6 +254,7 @@ export default function SubmissionRunner({
           field_id: fieldId,
           signature_image: signatureImage,
           geolocation: geo,
+          batch_apply: batchApply,
         }),
       });
       const body = await res.json().catch(() => ({}));
@@ -251,8 +269,51 @@ export default function SubmissionRunner({
       ]);
       if (body.completed) setStatus("completed");
       else if (status === "in_progress") setStatus("awaiting_signature");
+      if (batchApply && body.batch?.siblings_signed > 0) {
+        alert(
+          `Signed ${body.batch.siblings_signed} sibling submission${body.batch.siblings_signed === 1 ? "" : "s"}.${
+            body.batch.siblings_completed
+              ? ` ${body.batch.siblings_completed} now complete.`
+              : ""
+          }`,
+        );
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sign failed");
+    }
+  }
+
+  /**
+   * "Apply this section to everyone in the batch." Sends current
+   * data to every sibling submission in the same batch where the
+   * section is still writable for the current user.
+   */
+  async function propagateSection(sectionId: string) {
+    if (!batchId || batchSiblingCount === 0) return;
+    setError(null);
+    if (dirtyRef.current) {
+      const ok = await save();
+      if (!ok) return;
+    }
+    try {
+      const res = await fetch(
+        `/api/submissions/${submission.id}/propagate-section`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ section_id: sectionId }),
+        },
+      );
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.error ?? "Propagation failed");
+      alert(
+        `Applied to ${body.propagated} of ${body.total_siblings} sibling submission${body.total_siblings === 1 ? "" : "s"}` +
+          (body.skipped > 0
+            ? ` (${body.skipped} skipped — already signed or owned by someone else)`
+            : ""),
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Propagation failed");
     }
   }
 
@@ -313,6 +374,31 @@ export default function SubmissionRunner({
             <p className="mt-1 text-sm text-muted">{sec.description}</p>
           )}
           <SectionLockBanner lock={lock} />
+          {/* Batch shortcut: when this submission is in a batch and the
+              user owns this section, offer one-tap propagation to every
+              other inductee in the batch. Saves Heli admin / OIM from
+              re-keying sections 1-2 N times. */}
+          {sectionCanEdit && batchId && batchSiblingCount > 0 && (
+            <div className="mt-2 rounded-md border border-accent/30 bg-accent/5 p-2.5">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <span className="text-xs text-ink">
+                  This submission is part of a batch of {batchSiblingCount + 1}.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => propagateSection(sec.id)}
+                  className="rounded-md bg-accent px-3 py-1.5 text-xs font-bold text-bg"
+                >
+                  Apply this section to all {batchSiblingCount + 1} →
+                </button>
+              </div>
+              <p className="mt-1 text-[11px] text-muted">
+                Copies every field in this section (not signatures) to the
+                other inductee submissions in this batch. Already-signed
+                sections are skipped.
+              </p>
+            </div>
+          )}
           <div className="mt-4 space-y-5">
             {sec.fields.map((f) => (
               <FieldRenderer
