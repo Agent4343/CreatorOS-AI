@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type {
   FormDefinition,
@@ -687,6 +687,80 @@ export default function BatchStartButton({
             >
               + Add another inductee
             </button>
+          </div>
+
+          {/* Pre-flight preview: every signature field × every inductee,
+              showing exactly who will be emailed when. Catches the
+              silent failure where someone forgot to toggle "Different
+              per inductee" or left an override blank — visible BEFORE
+              submitting, not after when supervisors aren't signing. */}
+          <div className="rounded-md border border-ink/15 bg-bg-2 p-3 text-xs">
+            <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted">
+              Who will be asked to sign
+            </div>
+            {sigFields.length === 0 ? (
+              <div className="text-muted">No signature fields on this form.</div>
+            ) : (
+              <ul className="space-y-1">
+                {sigFields.map((f) => {
+                  const isInductee = f.id === inducteeSigFieldId;
+                  const mode = fieldMode(f.id);
+                  let detail: ReactNode;
+                  if (isInductee) {
+                    detail = (
+                      <span>
+                        each inductee signs their own (
+                        {inductees.filter((i) => i.email.trim()).length}/
+                        {inductees.length} have email)
+                      </span>
+                    );
+                  } else if (mode === "role") {
+                    const role = roles.find((r) => r.id === roleByField[f.id]);
+                    detail = role ? (
+                      <span>
+                        any of <strong>{role.name}</strong> ({role.members.length}{" "}
+                        member{role.members.length === 1 ? "" : "s"})
+                      </span>
+                    ) : (
+                      <span className="text-err">role not selected</span>
+                    );
+                  } else if (mode === "per_inductee") {
+                    const filled = inductees.filter((i) =>
+                      i.overrides[f.id]?.email?.trim(),
+                    ).length;
+                    detail =
+                      filled === inductees.length ? (
+                        <span>
+                          per-inductee — {filled}/{inductees.length} filled in
+                        </span>
+                      ) : (
+                        <span className="text-err">
+                          per-inductee — only {filled}/{inductees.length} filled
+                          in (won&apos;t be emailed)
+                        </span>
+                      );
+                  } else {
+                    const a = sharedAssignments[f.id];
+                    detail = a?.email?.trim() ? (
+                      <span>
+                        <strong>{a.name?.trim() || a.email}</strong>
+                        {a.name?.trim() ? ` (${a.email})` : ""}
+                      </span>
+                    ) : (
+                      <span className="text-err">
+                        no email entered (won&apos;t be emailed)
+                      </span>
+                    );
+                  }
+                  return (
+                    <li key={f.id} className="flex flex-wrap gap-x-2">
+                      <span className="text-muted">{f.label}:</span>
+                      {detail}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
 
           {error && (

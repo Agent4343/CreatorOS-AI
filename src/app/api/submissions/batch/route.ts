@@ -103,31 +103,10 @@ export async function POST(req: NextRequest) {
       if (!EMAIL_RE.test(email)) {
         throw new Error(`Inductee #${idx + 1}: invalid email "${email}"`);
       }
-      // Validate per-inductee assignments if present. Per-inductee
-      // overrides are always specific-person — role-mode is shared,
-      // not per-inductee.
-      const perAssignments: SignatureAssignments = {};
-      for (const [fid, a] of Object.entries(i.assignments ?? {})) {
-        if ((a as { kind?: string }).kind === "role") {
-          throw new Error(
-            `Inductee #${idx + 1}: role assignments aren't supported per inductee`,
-          );
-        }
-        const u = a as { email?: string; name?: string; role?: string };
-        const aEmail = (u.email ?? "").trim().toLowerCase();
-        if (!aEmail) continue;
-        if (!EMAIL_RE.test(aEmail)) {
-          throw new Error(
-            `Inductee #${idx + 1}: invalid email for field ${fid}`,
-          );
-        }
-        perAssignments[fid] = {
-          email: aEmail,
-          name: u.name?.trim() || undefined,
-          role: u.role?.trim() || undefined,
-        };
-      }
-      return { name, email, perAssignments };
+      // Hold the raw assignments object — we can't validate field IDs
+      // until the form schema is loaded a few lines down. Email format
+      // and shape are checked here; field-ID validation is below.
+      return { name, email, rawAssignments: i.assignments ?? {} };
     });
 
     // Load + validate form schema; verify referenced field IDs exist.
@@ -320,6 +299,43 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Now that the schema is loaded, validate per-inductee assignments
+    // properly: every key must be a real signature field on the form
+    // (NOT just any field). Catches stale/typo'd field IDs that would
+    // otherwise get silently stored under a key no signature field
+    // uses — meaning the supervisor never gets emailed and the field
+    // stays "(unassigned)" on the runner. This was the silent-failure
+    // mode that produced the "supervisor never gets assigned" report.
+    const inducteesWithAssignments = inductees.map((i, idx) => {
+      const perAssignments: SignatureAssignments = {};
+      for (const [fid, a] of Object.entries(i.rawAssignments)) {
+        if (!sigFieldIds.has(fid)) {
+          throw new Error(
+            `Inductee #${idx + 1}: field ${fid} isn't a signature field on this form`,
+          );
+        }
+        if ((a as { kind?: string }).kind === "role") {
+          throw new Error(
+            `Inductee #${idx + 1}: role assignments aren't supported per inductee`,
+          );
+        }
+        const u = a as { email?: string; name?: string; role?: string };
+        const aEmail = (u.email ?? "").trim().toLowerCase();
+        if (!aEmail) continue;
+        if (!EMAIL_RE.test(aEmail)) {
+          throw new Error(
+            `Inductee #${idx + 1}: invalid email for field ${fid}`,
+          );
+        }
+        perAssignments[fid] = {
+          email: aEmail,
+          name: u.name?.trim() || undefined,
+          role: u.role?.trim() || undefined,
+        };
+      }
+      return { name: i.name, email: i.email, perAssignments };
+    });
+
     // Sanitize shared_data: drop keys that aren't on the schema.
     const sharedData: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(body.shared_data ?? {})) {
@@ -341,7 +357,7 @@ export async function POST(req: NextRequest) {
     // Build N submission rows.
     const batchId = randomUUID();
     const formVersionId = (version as { id: string }).id;
-    const rows = inductees.map((inductee) => {
+    const rows = inducteesWithAssignments.map((inductee) => {
       const data = { ...sharedData };
       if (body.inductee_name_field_id) {
         data[body.inductee_name_field_id] = inductee.name;
