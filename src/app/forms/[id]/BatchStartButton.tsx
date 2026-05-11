@@ -335,9 +335,16 @@ export default function BatchStartButton({
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? "Batch start failed");
-      // Land on the submissions list filtered to this batch's form;
-      // each submission shows up under "In progress · ready to finish".
-      router.push(`/submissions?form_id=${formId}`);
+      // Land on a view scoped to *this batch only* so the admin sees
+      // exactly the N submissions they just created — removes the
+      // ambiguity of dropping them onto the full form-history list
+      // where pre-existing rows could be mistaken for "the new batch."
+      const newBatchId = (body as { batch_id?: string }).batch_id;
+      if (newBatchId) {
+        router.push(`/submissions?batch_id=${newBatchId}`);
+      } else {
+        router.push(`/submissions?form_id=${formId}`);
+      }
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed");
@@ -660,9 +667,18 @@ export default function BatchStartButton({
 
           {/* Inductee list */}
           <div className="space-y-2">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-muted">
-              Inductees ({inductees.length})
-            </h3>
+            <div>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted">
+                List every inductee ({inductees.length}{" "}
+                {inductees.length === 1 ? "row" : "rows"} so far)
+              </h3>
+              <p className="text-[11px] text-muted">
+                One row per person you&apos;re inducting in this
+                session. We&apos;ll create a separate form for each.
+                For a single inductee, you&apos;re better off using
+                the regular <strong>Start</strong> button above.
+              </p>
+            </div>
             {inductees.map((ind, i) => (
               <div
                 key={i}
@@ -670,7 +686,7 @@ export default function BatchStartButton({
               >
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-mono text-xs text-muted">
-                    #{i + 1}
+                    Inductee #{i + 1}
                   </span>
                   <input
                     type="text"
@@ -701,9 +717,9 @@ export default function BatchStartButton({
             <button
               type="button"
               onClick={addInductee}
-              className="rounded-md border border-ink/20 px-3 py-1.5 text-xs"
+              className="w-full rounded-md border-2 border-dashed border-accent/40 bg-accent/5 px-3 py-2 text-sm font-medium text-accent hover:bg-accent/10"
             >
-              + Add another inductee
+              + Add another inductee ({inductees.length + 1} in total)
             </button>
           </div>
 

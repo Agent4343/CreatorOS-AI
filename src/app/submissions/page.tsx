@@ -6,13 +6,13 @@ import { supabaseService } from "@/lib/supabase/server";
 export default async function SubmissionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ form_id?: string }>;
+  searchParams: Promise<{ form_id?: string; batch_id?: string }>;
 }) {
   const user = await requireUser();
   const orgs = await listUserOrgs(user.id);
   if (orgs.length === 0) redirect("/onboarding");
   const { org } = orgs[0];
-  const { form_id } = await searchParams;
+  const { form_id, batch_id } = await searchParams;
 
   const sb = supabaseService();
 
@@ -36,6 +36,7 @@ export default async function SubmissionsPage({
     .order("created_at", { ascending: false })
     .limit(200);
   if (form_id) q = q.eq("form_id", form_id);
+  if (batch_id) q = q.eq("batch_id", batch_id);
   const { data, error } = await q;
   if (error) throw error;
   type Assignment =
@@ -151,12 +152,18 @@ export default async function SubmissionsPage({
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">
-            {filterFormName ? `Submissions · ${filterFormName}` : "Submissions"}
+            {batch_id
+              ? `Batch · ${rows.length} submission${rows.length === 1 ? "" : "s"}`
+              : filterFormName
+                ? `Submissions · ${filterFormName}`
+                : "Submissions"}
           </h1>
           <p className="mt-1 text-sm text-muted">
-            {filterFormName
-              ? "Each row is a separate filled-in copy of this form."
-              : "Every form fill across your team."}
+            {batch_id
+              ? `Created ${rows.length} form${rows.length === 1 ? "" : "s"} together — one per inductee. Each one routes signatures independently.`
+              : filterFormName
+                ? "Each row is a separate filled-in copy of this form."
+                : "Every form fill across your team."}
           </p>
         </div>
         {form_id && (
