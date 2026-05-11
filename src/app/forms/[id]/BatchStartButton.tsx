@@ -565,7 +565,27 @@ export default function BatchStartButton({
                             </span>
                           )}
                         </label>
+                        <label className="flex items-center gap-1.5">
+                          <input
+                            type="radio"
+                            name={`mode-${f.id}`}
+                            checked={mode === "per_inductee"}
+                            onChange={() =>
+                              setFieldMode(f.id, "per_inductee")
+                            }
+                          />
+                          Different per inductee
+                        </label>
                       </div>
+                      {mode === "per_inductee" && (
+                        <p className="mt-1.5 text-[11px] text-muted">
+                          Each inductee gets their own row below to
+                          assign their {f.label.toLowerCase() || "signer"}.
+                          Use this when crews split across supervisors —
+                          a sign-once cascade only spreads to inductees
+                          assigned to the same person.
+                        </p>
+                      )}
 
                       {mode === "user" && (
                         <div className="mt-1.5 grid gap-2 md:grid-cols-3">
@@ -679,41 +699,90 @@ export default function BatchStartButton({
                 the regular <strong>Start</strong> button above.
               </p>
             </div>
-            {inductees.map((ind, i) => (
-              <div
-                key={i}
-                className="space-y-1.5 rounded-md border border-ink/10 bg-white p-2"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-mono text-xs text-muted">
-                    Inductee #{i + 1}
-                  </span>
-                  <input
-                    type="text"
-                    value={ind.name}
-                    onChange={(e) => updateInductee(i, "name", e.target.value)}
-                    placeholder="Full name"
-                    className="flex-1 rounded-md border border-ink/20 p-1.5 text-sm"
-                  />
-                  <input
-                    type="email"
-                    value={ind.email}
-                    onChange={(e) => updateInductee(i, "email", e.target.value)}
-                    placeholder="email@example.com"
-                    className="flex-1 rounded-md border border-ink/20 p-1.5 text-sm"
-                  />
-                  {inductees.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeInductee(i)}
-                      className="text-xs text-muted hover:text-err"
-                    >
-                      remove
-                    </button>
+            {inductees.map((ind, i) => {
+              // Per-inductee signature fields surface as extra inputs
+              // beneath this inductee's name/email — one row per
+              // signature in per_inductee mode (typically supervisor).
+              const perInducteeSigs = sigFields.filter(
+                (f) =>
+                  f.id !== inducteeSigFieldId &&
+                  fieldMode(f.id) === "per_inductee",
+              );
+              return (
+                <div
+                  key={i}
+                  className="space-y-1.5 rounded-md border border-ink/10 bg-white p-2"
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-xs text-muted">
+                      Inductee #{i + 1}
+                    </span>
+                    <input
+                      type="text"
+                      value={ind.name}
+                      onChange={(e) =>
+                        updateInductee(i, "name", e.target.value)
+                      }
+                      placeholder="Full name"
+                      className="flex-1 rounded-md border border-ink/20 p-1.5 text-sm"
+                    />
+                    <input
+                      type="email"
+                      value={ind.email}
+                      onChange={(e) =>
+                        updateInductee(i, "email", e.target.value)
+                      }
+                      placeholder="email@example.com"
+                      className="flex-1 rounded-md border border-ink/20 p-1.5 text-sm"
+                    />
+                    {inductees.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeInductee(i)}
+                        className="text-xs text-muted hover:text-err"
+                      >
+                        remove
+                      </button>
+                    )}
+                  </div>
+                  {perInducteeSigs.length > 0 && (
+                    <div className="space-y-1.5 border-t border-ink/10 pt-1.5 pl-2">
+                      {perInducteeSigs.map((f) => {
+                        const ov = ind.overrides[f.id] ?? { email: "" };
+                        return (
+                          <div
+                            key={f.id}
+                            className="flex flex-wrap items-center gap-2"
+                          >
+                            <span className="text-[11px] text-muted">
+                              {f.label}:
+                            </span>
+                            <input
+                              type="text"
+                              value={ov.name ?? ""}
+                              onChange={(e) =>
+                                updateOverride(i, f.id, "name", e.target.value)
+                              }
+                              placeholder="Signer name"
+                              className="flex-1 rounded-md border border-ink/20 p-1.5 text-sm"
+                            />
+                            <input
+                              type="email"
+                              value={ov.email ?? ""}
+                              onChange={(e) =>
+                                updateOverride(i, f.id, "email", e.target.value)
+                              }
+                              placeholder="signer@example.com"
+                              className="flex-1 rounded-md border border-ink/20 p-1.5 text-sm"
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
             <button
               type="button"
               onClick={addInductee}
