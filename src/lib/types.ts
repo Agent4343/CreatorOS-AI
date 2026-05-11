@@ -72,6 +72,14 @@ export const FormSectionSchema = z.object({
   id: z.string().min(1),
   title: z.string(),
   description: z.string().optional(),
+  /** Restricts who can edit + sign this section. UUID of an org
+   * role. When set, the submission UI rejects edits to any field in
+   * the section unless the user is a current member of this role.
+   * Mutually exclusive with inductee_section. */
+  required_role_id: z.string().uuid().optional(),
+  /** Marks this section as the inductee's own section. Only the
+   * submission's assigned inductee email can edit + sign here. */
+  inductee_section: z.boolean().optional(),
   fields: z.array(FormFieldSchema),
 });
 export type FormSection = z.infer<typeof FormSectionSchema>;

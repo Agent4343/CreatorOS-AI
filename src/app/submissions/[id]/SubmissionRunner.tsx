@@ -82,6 +82,9 @@ export default function SubmissionRunner({
   signatureAssignments,
   batchId,
   batchSiblingCount,
+  userRoleIds,
+  roleNameById,
+  inducteeEmail,
 }: {
   submission: SubmissionShape;
   schema: FormDefinition;
@@ -95,6 +98,9 @@ export default function SubmissionRunner({
   signatureAssignments: SignatureAssignments;
   batchId: string | null;
   batchSiblingCount: number;
+  userRoleIds: string[];
+  roleNameById: Record<string, string>;
+  inducteeEmail: string | null;
 }) {
   const [data, setData] = useState<Record<string, unknown>>(submission.data ?? {});
   const [status, setStatus] = useState<SubmissionStatus>(submission.status);
@@ -114,6 +120,11 @@ export default function SubmissionRunner({
   // Per-section lock state — recomputes whenever a signature lands.
   // Open/reserved-for-me sections allow edits; reserved-for-other and
   // signed-locked sections render read-only banners and disable inputs.
+  const userRoleIdSet = useMemo(() => new Set(userRoleIds), [userRoleIds]);
+  const roleNameMap = useMemo(
+    () => new Map(Object.entries(roleNameById)),
+    [roleNameById],
+  );
   const sectionLocks = useMemo(
     () =>
       computeAllSectionLocks({
@@ -125,8 +136,19 @@ export default function SubmissionRunner({
           signed_at: s.signed_at,
         })),
         currentUserEmail,
+        userRoleIds: userRoleIdSet,
+        roleNameById: roleNameMap,
+        inducteeEmail,
       }),
-    [schema, signatureAssignments, signed, currentUserEmail],
+    [
+      schema,
+      signatureAssignments,
+      signed,
+      currentUserEmail,
+      userRoleIdSet,
+      roleNameMap,
+      inducteeEmail,
+    ],
   );
 
   // Pre-compute which sections still have unfilled required fields
@@ -443,7 +465,12 @@ export default function SubmissionRunner({
               cls = "border border-ok/50 bg-ok/10 text-ink";
             else if (lock.state === "reserved_for_me")
               cls = "border border-accent bg-accent/10 text-ink";
-            else if (lock.state === "reserved_for_other")
+            else if (
+              lock.state === "reserved_for_other" ||
+              lock.state === "waiting_prior" ||
+              lock.state === "role_required" ||
+              lock.state === "inductee_required"
+            )
               cls = "border border-warn/40 bg-warn/5 text-muted";
             else if (missing > 0)
               cls = "border border-warn/40 bg-warn/5 text-ink";
@@ -464,7 +491,13 @@ export default function SubmissionRunner({
                       ? " — your turn"
                       : lock.state === "reserved_for_other"
                         ? ` — waiting for ${lock.assigneeLabel}`
-                        : "")
+                        : lock.state === "waiting_prior"
+                          ? ` — waiting for "${lock.priorSectionTitle}" to be signed`
+                          : lock.state === "role_required"
+                            ? ` — only ${lock.requiredRoleName} can edit`
+                            : lock.state === "inductee_required"
+                              ? " — only the inductee can edit"
+                              : "")
                 }
                 className={"min-w-[2.25rem] rounded-md px-2 py-1 text-xs " + cls}
               >
@@ -706,6 +739,46 @@ function SectionLockBanner({ lock }: { lock: SectionLockState }) {
     // turn" — we don't loud-banner it, the existing signature-field
     // assignment line covers that.)
     return null;
+  }
+  if (lock.state === "waiting_prior") {
+    return (
+      <div className="mt-2 rounded-md border border-warn/40 bg-warn/5 p-2.5 text-xs">
+        <strong className="text-ink">
+          ⏳ Waiting for &ldquo;{lock.priorSectionTitle}&rdquo;
+        </strong>
+        <span className="text-muted">
+          {" — this section opens once Section "}
+          {lock.priorSectionIndex + 1}
+          {" is signed."}
+        </span>
+      </div>
+    );
+  }
+  if (lock.state === "role_required") {
+    return (
+      <div className="mt-2 rounded-md border border-warn/40 bg-warn/5 p-2.5 text-xs">
+        <strong className="text-ink">
+          🔒 Only {lock.requiredRoleName} can edit this section
+        </strong>
+        <span className="text-muted">
+          {" — you'll need to be added to that role in Settings → Role rosters."}
+        </span>
+      </div>
+    );
+  }
+  if (lock.state === "inductee_required") {
+    return (
+      <div className="mt-2 rounded-md border border-warn/40 bg-warn/5 p-2.5 text-xs">
+        <strong className="text-ink">
+          🔒 Inductee&apos;s section
+        </strong>
+        <span className="text-muted">
+          {lock.inducteeEmail
+            ? ` — only ${lock.inducteeEmail} can fill in and sign here.`
+            : " — only the inductee assigned to this submission can edit here."}
+        </span>
+      </div>
+    );
   }
   if (lock.state === "reserved_for_other") {
     return (

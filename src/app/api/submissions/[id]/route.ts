@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AuthError, requireMembership, requireUser } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
-import { canWriteSection, computeSectionLock } from "@/lib/sectionLocks";
+import {
+  canWriteSection,
+  computeSectionLock,
+  inducteeEmailFromSubmission,
+  type SectionLockState,
+} from "@/lib/sectionLocks";
 import { supabaseService } from "@/lib/supabase/server";
 import type { FormDefinition, SignatureAssignments } from "@/lib/types";
 
@@ -118,16 +123,52 @@ export async function PATCH(
       const userEmail = (user.email ?? "").toLowerCase();
       const currentData = e.data ?? {};
 
-      for (const section of schema.sections) {
+      // Pull every role the section schema references plus the user's
+      // memberships in those roles, in one round-trip per concern. We
+      // need both: role IDs to resolve role names for error messages,
+      // and the user's email-presence in member arrays to gate edits.
+      const referencedRoleIds = new Set<string>();
+      for (const sec of schema.sections) {
+        if (sec.required_role_id) referencedRoleIds.add(sec.required_role_id);
+      }
+      const userRoleIds = new Set<string>();
+      const roleNameById = new Map<string, string>();
+      if (referencedRoleIds.size > 0) {
+        const { data: roleRows } = await sb
+          .from("org_roles")
+          .select("id, name, members")
+          .eq("org_id", e.org_id)
+          .in("id", Array.from(referencedRoleIds));
+        for (const r of (roleRows ?? []) as Array<{
+          id: string;
+          name: string;
+          members: { email: string }[];
+        }>) {
+          roleNameById.set(r.id, r.name);
+          const memberSet = new Set(
+            (r.members ?? []).map((m) => m.email.toLowerCase()),
+          );
+          if (memberSet.has(userEmail)) userRoleIds.add(r.id);
+        }
+      }
+      const inducteeEmail = inducteeEmailFromSubmission(schema, assignments);
+
+      for (let idx = 0; idx < schema.sections.length; idx++) {
+        const section = schema.sections[idx];
         const lock = computeSectionLock({
           section,
           signatureAssignments: assignments,
           signedFields,
           currentUserEmail: userEmail,
+          allSections: schema.sections,
+          sectionIndex: idx,
+          userRoleIds,
+          roleNameById,
+          inducteeEmail,
         });
         if (canWriteSection(lock)) continue;
         // Find any field in this section whose value the request is
-        // changing — if so, reject.
+        // changing — if so, reject with the most specific reason.
         for (const f of section.fields) {
           if (
             f.type === "section_header" ||
@@ -139,13 +180,10 @@ export async function PATCH(
           const incoming = (body.data as Record<string, unknown>)[f.id];
           const stored = currentData[f.id];
           if (!shallowEqual(incoming, stored)) {
-            const owner =
-              lock.state === "reserved_for_other"
-                ? lock.assigneeLabel
-                : "the previous signer";
+            const reason = lockReason(lock);
             return NextResponse.json(
               {
-                error: `Section "${section.title}" is locked. Waiting for ${owner} — or already signed.`,
+                error: `Section "${section.title}" is locked. ${reason}`,
                 section_id: section.id,
                 section_title: section.title,
                 lock_state: lock.state,
@@ -203,6 +241,25 @@ export async function PATCH(
  * scalars or arrays — strings, numbers, booleans, nulls, arrays of
  * those. Good enough for the field types FieldForm stores.
  */
+function lockReason(lock: SectionLockState): string {
+  switch (lock.state) {
+    case "signed_locked":
+      return `Already signed by ${lock.signerName} — can't edit a signed section.`;
+    case "waiting_prior":
+      return `Waiting on "${lock.priorSectionTitle}" to be signed first.`;
+    case "role_required":
+      return `Only members of the "${lock.requiredRoleName}" role can edit this.`;
+    case "inductee_required":
+      return lock.inducteeEmail
+        ? `Only ${lock.inducteeEmail} (the inductee) can edit this.`
+        : `Only the inductee assigned to this submission can edit this.`;
+    case "reserved_for_other":
+      return `Reserved for ${lock.assigneeLabel}.`;
+    default:
+      return "Section is locked.";
+  }
+}
+
 function shallowEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (a == null || b == null) return a == null && b == null;

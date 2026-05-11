@@ -156,14 +156,20 @@ export async function POST(
     // must be a current member of that role — independent of who the
     // assignment names. Catches the "Brad changed companies, his
     // assignment is stale, but the form was submitted to him" case.
-    // Also lets a form template guarantee "this section can only be
-    // signed by an OIM" in the schema itself, so role membership
-    // doesn't have to be re-litigated per batch.
-    if (target.required_role_id) {
+    // The role can come from either the field itself or the
+    // containing section; the section-level rule is the typical case
+    // (a whole "OIM" section gates its signature without needing the
+    // field marked too).
+    const containingSection = schema.sections.find((s) =>
+      s.fields.some((f) => f.id === body.field_id),
+    );
+    const effectiveRequiredRoleId =
+      target.required_role_id ?? containingSection?.required_role_id;
+    if (effectiveRequiredRoleId) {
       const { data: roleRow } = await sb
         .from("org_roles")
         .select("name, members")
-        .eq("id", target.required_role_id)
+        .eq("id", effectiveRequiredRoleId)
         .eq("org_id", sRow.org_id)
         .maybeSingle();
       if (!roleRow) {
@@ -189,6 +195,71 @@ export async function POST(
           },
           { status: 403 },
         );
+      }
+    }
+
+    // Inductee-section gate. Only the inductee whose email is on
+    // this submission can sign in the inductee section. We resolve
+    // that email by looking at the assignment of the signature
+    // field within an inductee_section (the batch route puts the
+    // inductee's email there).
+    if (containingSection?.inductee_section) {
+      let inducteeEmail: string | null = null;
+      for (const sec of schema.sections) {
+        if (!sec.inductee_section) continue;
+        for (const f of sec.fields) {
+          if (f.type !== "signature") continue;
+          const a = assignments[f.id];
+          if (!a) continue;
+          if ((a as { kind?: string }).kind === "role") continue;
+          inducteeEmail = (a as { email?: string }).email?.toLowerCase() ?? null;
+          if (inducteeEmail) break;
+        }
+        if (inducteeEmail) break;
+      }
+      if (inducteeEmail && (user.email ?? "").toLowerCase() !== inducteeEmail) {
+        return NextResponse.json(
+          {
+            error: `Only ${inducteeEmail} (the inductee) can sign "${containingSection.title}".`,
+          },
+          { status: 403 },
+        );
+      }
+    }
+
+    // Sequential workflow gate. If the form template uses section-
+    // level gating (Heli admin → OIM → Supervisor → Inductee), each
+    // section opens only when the prior one is signed. Refuse a
+    // signature on section N when any earlier section that has
+    // signatures hasn't been fully signed yet — otherwise OIM could
+    // sign section 2 before Heli admin signs section 1, breaking the
+    // intended approval chain.
+    if (containingSection) {
+      const sectionIdx = schema.sections.findIndex(
+        (s) => s.id === containingSection.id,
+      );
+      const { data: priorSigsRows } = await sb
+        .from("submission_signatures")
+        .select("field_id")
+        .eq("submission_id", sRow.id);
+      const signedSet = new Set(
+        ((priorSigsRows ?? []) as { field_id: string }[]).map(
+          (r) => r.field_id,
+        ),
+      );
+      for (let i = 0; i < sectionIdx; i++) {
+        const prior = schema.sections[i];
+        const priorSigs = prior.fields.filter((f) => f.type === "signature");
+        if (priorSigs.length === 0) continue;
+        const allSigned = priorSigs.every((f) => signedSet.has(f.id));
+        if (!allSigned) {
+          return NextResponse.json(
+            {
+              error: `"${prior.title}" must be signed before "${containingSection.title}" can be signed.`,
+            },
+            { status: 409 },
+          );
+        }
       }
     }
 

@@ -295,6 +295,94 @@ export default function FormEditor({
             </div>
           </div>
 
+          <div className="rounded-md border border-ink/10 bg-bg p-2 text-xs">
+            <div className="font-medium">Who can fill out this section?</div>
+            <div className="mt-0.5 text-[11px] text-muted">
+              Locks both editing <em>and</em> signing of this section.
+              The next section opens only after this one is signed.
+            </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-1.5">
+                <input
+                  type="radio"
+                  name={`sec-gate-${sec.id}`}
+                  checked={
+                    !sec.required_role_id && !sec.inductee_section
+                  }
+                  onChange={() =>
+                    updateSection(sIdx, {
+                      required_role_id: undefined,
+                      inductee_section: undefined,
+                    })
+                  }
+                />
+                Anyone in the org
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input
+                  type="radio"
+                  name={`sec-gate-${sec.id}`}
+                  checked={!!sec.required_role_id}
+                  onChange={() =>
+                    updateSection(sIdx, {
+                      required_role_id: roles[0]?.id,
+                      inductee_section: undefined,
+                    })
+                  }
+                  disabled={roles.length === 0}
+                />
+                A specific role
+              </label>
+              <label className="flex items-center gap-1.5">
+                <input
+                  type="radio"
+                  name={`sec-gate-${sec.id}`}
+                  checked={!!sec.inductee_section}
+                  onChange={() =>
+                    updateSection(sIdx, {
+                      inductee_section: true,
+                      required_role_id: undefined,
+                    })
+                  }
+                />
+                The inductee themselves
+              </label>
+            </div>
+            {sec.required_role_id && (
+              <div className="mt-1.5">
+                <select
+                  value={sec.required_role_id}
+                  onChange={(e) =>
+                    updateSection(sIdx, { required_role_id: e.target.value })
+                  }
+                  className="rounded-md border border-ink/20 bg-white p-1 text-xs"
+                >
+                  {roles.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name}
+                    </option>
+                  ))}
+                </select>
+                <span className="ml-2 text-[11px] text-muted">
+                  Only members of this role can edit + sign.
+                </span>
+              </div>
+            )}
+            {sec.inductee_section && (
+              <div className="mt-1 text-[11px] text-muted">
+                Only the inductee assigned to each submission can edit
+                + sign. Put a signature field in this section so the
+                inductee's email gets associated.
+              </div>
+            )}
+            {roles.length === 0 && (
+              <div className="mt-1 text-[11px] text-muted">
+                Define roles in Settings → Role rosters to use role
+                gating.
+              </div>
+            )}
+          </div>
+
           <div className="space-y-2">
             {sec.fields.map((f, fIdx) => (
               <FieldEditor

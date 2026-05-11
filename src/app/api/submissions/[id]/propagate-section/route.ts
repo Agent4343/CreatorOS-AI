@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AuthError, requireMembership, requireUser } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
-import { canWriteSection, computeSectionLock } from "@/lib/sectionLocks";
+import {
+  canWriteSection,
+  computeSectionLock,
+  inducteeEmailFromSubmission,
+} from "@/lib/sectionLocks";
 import { supabaseService } from "@/lib/supabase/server";
 import type {
   FormDefinition,
@@ -91,13 +95,16 @@ export async function POST(
         { status: 500 },
       );
     }
-    const section = schema.sections.find((sec) => sec.id === body.section_id);
-    if (!section) {
+    const sectionIndex = schema.sections.findIndex(
+      (sec) => sec.id === body.section_id,
+    );
+    if (sectionIndex < 0) {
       return NextResponse.json(
         { error: "Unknown section_id" },
         { status: 400 },
       );
     }
+    const section = schema.sections[sectionIndex];
 
     // The user must be allowed to write this section on the source.
     const { data: srcSigs } = await sb
@@ -110,11 +117,49 @@ export async function POST(
       signed_at: string;
     }[];
     const userEmail = (user.email ?? "").toLowerCase();
+
+    // Resolve section-level role context once: which roles the schema
+    // references, and which of them the user is a member of. Used for
+    // both source and sibling lock evaluation below.
+    const referencedRoleIds = new Set<string>();
+    for (const sec of schema.sections) {
+      if (sec.required_role_id) referencedRoleIds.add(sec.required_role_id);
+    }
+    const userRoleIds = new Set<string>();
+    const roleNameById = new Map<string, string>();
+    if (referencedRoleIds.size > 0) {
+      const { data: roleRows } = await sb
+        .from("org_roles")
+        .select("id, name, members")
+        .eq("org_id", s.org_id)
+        .in("id", Array.from(referencedRoleIds));
+      for (const r of (roleRows ?? []) as Array<{
+        id: string;
+        name: string;
+        members: { email: string }[];
+      }>) {
+        roleNameById.set(r.id, r.name);
+        const memberSet = new Set(
+          (r.members ?? []).map((m) => m.email.toLowerCase()),
+        );
+        if (memberSet.has(userEmail)) userRoleIds.add(r.id);
+      }
+    }
+    const sourceInductee = inducteeEmailFromSubmission(
+      schema,
+      s.signature_assignments ?? {},
+    );
+
     const sourceLock = computeSectionLock({
       section,
       signatureAssignments: s.signature_assignments ?? {},
       signedFields: sourceSigned,
       currentUserEmail: userEmail,
+      allSections: schema.sections,
+      sectionIndex,
+      userRoleIds,
+      roleNameById,
+      inducteeEmail: sourceInductee,
     });
     if (!canWriteSection(sourceLock)) {
       return NextResponse.json(
@@ -194,11 +239,20 @@ export async function POST(
         skipped.push({ id: sib.id, reason: sib.status });
         continue;
       }
+      const sibInductee = inducteeEmailFromSubmission(
+        schema,
+        sib.signature_assignments ?? {},
+      );
       const sibLock = computeSectionLock({
         section,
         signatureAssignments: sib.signature_assignments ?? {},
         signedFields: sibSigsByIdMap[sib.id] ?? [],
         currentUserEmail: userEmail,
+        allSections: schema.sections,
+        sectionIndex,
+        userRoleIds,
+        roleNameById,
+        inducteeEmail: sibInductee,
       });
       if (!canWriteSection(sibLock)) {
         skipped.push({ id: sib.id, reason: sibLock.state });

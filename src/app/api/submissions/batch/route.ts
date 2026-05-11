@@ -267,10 +267,21 @@ export async function POST(req: NextRequest) {
     // members regardless of what the BatchStartButton tried to send.
     // This is what makes "only role members can sign" enforceable
     // end-to-end — the assignment matches the runtime role gate.
+    // Two routes to "this signature must be signed by role X":
+    //   - the signature field itself has required_role_id (field-level)
+    //   - the section containing the field has required_role_id
+    //     (section-level — gates editing AND signing of every field
+    //     inside, including signatures)
+    // Field-level wins if both are set. Section-level is the
+    // sequential-workflow case the user models in the form editor;
+    // it propagates here so we don't have to set the same role on
+    // every signature inside the section by hand.
     const requiredRoleByField = new Map<string, string>();
-    for (const f of allFields) {
-      if (f.type === "signature" && f.required_role_id) {
-        requiredRoleByField.set(f.id, f.required_role_id);
+    for (const sec of schema.sections) {
+      for (const f of sec.fields) {
+        if (f.type !== "signature") continue;
+        const roleId = f.required_role_id ?? sec.required_role_id;
+        if (roleId) requiredRoleByField.set(f.id, roleId);
       }
     }
     if (requiredRoleByField.size > 0) {

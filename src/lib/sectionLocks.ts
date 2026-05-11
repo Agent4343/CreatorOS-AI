@@ -32,30 +32,118 @@ export type SectionLockState =
    * for everyone, including the signer. The data hash binds the
    * submission state at sign time; allowing later edits would
    * silently break tamper-evidence. */
-  | { state: "signed_locked"; signerName: string; signedAt: string };
+  | { state: "signed_locked"; signerName: string; signedAt: string }
+  /** Section-level required role: the template restricts edit + sign
+   * to members of a specific role and the current user isn't one. */
+  | { state: "role_required"; requiredRoleName: string }
+  /** Section is marked inductee_section and the current user's email
+   * isn't the inductee assigned to this submission. */
+  | { state: "inductee_required"; inducteeEmail: string | null }
+  /** An earlier section with signatures hasn't been signed yet, so
+   * this section is held closed until the prior step completes.
+   * Sequential workflow gate — Heli admin → OIM → Supervisor →
+   * Inductee runs in order, not in parallel. */
+  | {
+      state: "waiting_prior";
+      priorSectionTitle: string;
+      priorSectionIndex: number;
+    };
+
+/**
+ * Derive the inductee's email for a submission by looking at the
+ * first signature field inside the section marked
+ * inductee_section: true and pulling out that field's assignment.
+ * Returns null if no inductee section is defined, no signature in it,
+ * or no assignment yet (e.g. legacy submission started before the
+ * inductee flow existed).
+ */
+export function inducteeEmailFromSubmission(
+  schema: FormDefinition,
+  signatureAssignments: SignatureAssignments,
+): string | null {
+  for (const section of schema.sections) {
+    if (!section.inductee_section) continue;
+    for (const f of section.fields) {
+      if (f.type !== "signature") continue;
+      const a = signatureAssignments[f.id];
+      if (!a || isRoleAssignment(a)) continue;
+      const email = (a as { email?: string }).email;
+      if (email) return email.toLowerCase();
+    }
+  }
+  return null;
+}
+
+/**
+ * True if some section before `index` has signature fields and at
+ * least one of them isn't signed yet. The sequential workflow gate.
+ * Sections with no signatures are skipped — they don't represent an
+ * approval step.
+ */
+function isPriorStepIncomplete(
+  sections: FormSection[],
+  index: number,
+  signedFields: { field_id: string }[],
+): { priorTitle: string; priorIndex: number } | null {
+  const signedIds = new Set(signedFields.map((s) => s.field_id));
+  for (let i = 0; i < index; i++) {
+    const sigs = sections[i].fields.filter((f) => f.type === "signature");
+    if (sigs.length === 0) continue;
+    const allSigned = sigs.every((f) => signedIds.has(f.id));
+    if (!allSigned) {
+      return { priorTitle: sections[i].title, priorIndex: i };
+    }
+  }
+  return null;
+}
 
 /**
  * Compute the lock state for one section.
  *
- * Looks at the signature fields in the section. If any is signed →
- * the section is locked. If any is assigned to someone, that person
- * owns the section until they sign. Otherwise open.
- *
- * If a section has *multiple* signature fields with different
- * assignees, we lock for everyone except the first unsigned assignee
- * — they should sign first, then the section locks.
+ * Evaluation order (first match wins):
+ *   1. Signed already → signed_locked (immutable, for everyone)
+ *   2. Prior step not signed → waiting_prior (sequential gate)
+ *   3. Section role required and user not in it → role_required
+ *   4. Inductee section and user isn't the inductee → inductee_required
+ *   5. Signature in section assigned to someone else → reserved_for_other
+ *   6. Signature in section assigned to me → reserved_for_me
+ *   7. Otherwise → open
  */
 export function computeSectionLock(args: {
   section: FormSection;
   signatureAssignments: SignatureAssignments;
   signedFields: { field_id: string; signer_name?: string; signed_at?: string }[];
   currentUserEmail: string;
+  /** All sections in declaration order — needed for the sequential
+   * gate. If omitted, sequential gating is skipped (legacy callers). */
+  allSections?: FormSection[];
+  /** Index of `section` within allSections. Required when
+   * allSections is set. */
+  sectionIndex?: number;
+  /** Set of role IDs the current user is a member of in this org.
+   * Used to evaluate section.required_role_id. */
+  userRoleIds?: Set<string>;
+  /** Lookup from role_id → human role name, for error messages. */
+  roleNameById?: Map<string, string>;
+  /** Email of the inductee for this submission, if any.
+   * Compare against currentUserEmail to gate inductee sections. */
+  inducteeEmail?: string | null;
 }): SectionLockState {
-  const { section, signatureAssignments, signedFields, currentUserEmail } = args;
+  const {
+    section,
+    signatureAssignments,
+    signedFields,
+    currentUserEmail,
+    allSections,
+    sectionIndex,
+    userRoleIds,
+    roleNameById,
+    inducteeEmail,
+  } = args;
   const sigFields = section.fields.filter((f) => f.type === "signature");
-  if (sigFields.length === 0) return { state: "open" };
+  const me = currentUserEmail.toLowerCase();
 
-  // Any signed signature in this section → fully locked.
+  // 1. Already signed → frozen for everyone.
   for (const f of sigFields) {
     const sig = signedFields.find((s) => s.field_id === f.id);
     if (sig) {
@@ -67,11 +155,38 @@ export function computeSectionLock(args: {
     }
   }
 
-  // No signatures signed yet. Look for the first assignment.
+  // 2. Sequential gate — earlier section's signatures still pending.
+  if (allSections && typeof sectionIndex === "number") {
+    const prior = isPriorStepIncomplete(allSections, sectionIndex, signedFields);
+    if (prior) {
+      return {
+        state: "waiting_prior",
+        priorSectionTitle: prior.priorTitle,
+        priorSectionIndex: prior.priorIndex,
+      };
+    }
+  }
+
+  // 3. Section-level required role.
+  if (section.required_role_id) {
+    if (!userRoleIds || !userRoleIds.has(section.required_role_id)) {
+      const name =
+        roleNameById?.get(section.required_role_id) ?? "required role";
+      return { state: "role_required", requiredRoleName: name };
+    }
+  }
+
+  // 4. Inductee-only section.
+  if (section.inductee_section) {
+    if (!inducteeEmail || inducteeEmail.toLowerCase() !== me) {
+      return { state: "inductee_required", inducteeEmail: inducteeEmail ?? null };
+    }
+  }
+
+  // 5/6. Existing per-signature assignment logic.
   for (const f of sigFields) {
     const a = signatureAssignments[f.id];
     if (!a) continue;
-    const me = currentUserEmail.toLowerCase();
     const allowed = assigneeEmails(a);
     const assignedToRole = isRoleAssignment(a);
     if (allowed.includes(me)) {
@@ -88,7 +203,7 @@ export function computeSectionLock(args: {
     };
   }
 
-  // No assignment, no signature → open clipboard.
+  // 7. No restrictions.
   return { state: "open" };
 }
 
@@ -98,16 +213,24 @@ export function computeAllSectionLocks(args: {
   signatureAssignments: SignatureAssignments;
   signedFields: { field_id: string; signer_name?: string; signed_at?: string }[];
   currentUserEmail: string;
+  userRoleIds?: Set<string>;
+  roleNameById?: Map<string, string>;
+  inducteeEmail?: string | null;
 }): Record<string, SectionLockState> {
   const out: Record<string, SectionLockState> = {};
-  for (const section of args.schema.sections) {
+  args.schema.sections.forEach((section, idx) => {
     out[section.id] = computeSectionLock({
       section,
       signatureAssignments: args.signatureAssignments,
       signedFields: args.signedFields,
       currentUserEmail: args.currentUserEmail,
+      allSections: args.schema.sections,
+      sectionIndex: idx,
+      userRoleIds: args.userRoleIds,
+      roleNameById: args.roleNameById,
+      inducteeEmail: args.inducteeEmail,
     });
-  }
+  });
   return out;
 }
 
