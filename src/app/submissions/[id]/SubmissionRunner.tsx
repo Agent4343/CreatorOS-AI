@@ -108,6 +108,7 @@ export default function SubmissionRunner({
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cascadeNotice, setCascadeNotice] = useState<string | null>(null);
   const [currentSection, setCurrentSection] = useState(0);
   const dirtyRef = useRef(false);
   const dataRef = useRef(data);
@@ -214,6 +215,19 @@ export default function SubmissionRunner({
       setSavedAt(new Date().toLocaleTimeString());
       dirtyRef.current = false;
       setSaveState("saved");
+      // Server-side cascade hit a sibling? Surface a quiet inline
+      // notice so the heli admin sees that filling in once spread to
+      // the rest of the batch — no popup, no extra click.
+      const cascade = (
+        body as {
+          cascade?: { siblings_updated: number; fields_written: number } | null;
+        }
+      ).cascade;
+      if (cascade && cascade.siblings_updated > 0) {
+        setCascadeNotice(
+          `Synced to ${cascade.siblings_updated} other submission${cascade.siblings_updated === 1 ? "" : "s"} in this batch.`,
+        );
+      }
       return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
@@ -258,18 +272,15 @@ export default function SubmissionRunner({
         if (!ok) return;
       }
 
-      // If this submission is in a batch and the same user is also
-      // assigned to this field on every sibling, ask whether to sign
-      // once for the whole batch. Skips the prompt for ad-hoc
-      // submissions.
-      let batchApply = false;
-      if (batchId && batchSiblingCount > 0) {
-        batchApply = window.confirm(
-          `Apply this signature to all ${batchSiblingCount + 1} inductees in this batch?\n\n` +
-            `OK = sign for everyone in the batch at once.\n` +
-            `Cancel = sign only this one.`,
-        );
-      }
+      // Batch siblings cascade automatically. The server checks per
+      // sibling whether this user is the assignee for this field, and
+      // skips siblings where they aren't. So defaulting to true is
+      // safe — heli admin / OIM signatures spread to every sibling
+      // they're assigned to (the whole batch); supervisor signatures
+      // spread only within the supervisor's crew; inductee signatures
+      // never spread (different inductee per sibling). One signature
+      // gesture, correct propagation — no prompt needed.
+      const batchApply = batchId !== null && batchSiblingCount > 0;
 
       const geo = await tryGeolocation();
       const res = await fetch(`/api/submissions/${submission.id}/sign`, {
@@ -295,12 +306,13 @@ export default function SubmissionRunner({
       if (body.completed) setStatus("completed");
       else if (status === "in_progress") setStatus("awaiting_signature");
       if (batchApply && body.batch?.siblings_signed > 0) {
-        alert(
-          `Signed ${body.batch.siblings_signed} sibling submission${body.batch.siblings_signed === 1 ? "" : "s"}.${
-            body.batch.siblings_completed
-              ? ` ${body.batch.siblings_completed} now complete.`
-              : ""
-          }`,
+        // Non-blocking inline notice rather than alert(). The signer
+        // doesn't need to dismiss anything to keep working.
+        setCascadeNotice(
+          `Signature applied to ${body.batch.siblings_signed} other submission${body.batch.siblings_signed === 1 ? "" : "s"} in this batch` +
+            (body.batch.siblings_completed
+              ? ` · ${body.batch.siblings_completed} now complete.`
+              : "."),
         );
       }
     } catch (e) {
@@ -518,6 +530,20 @@ export default function SubmissionRunner({
             Your changes were not saved. Try the Save button or check your
             connection before continuing.
           </div>
+        </div>
+      )}
+
+      {cascadeNotice && (
+        <div className="mt-3 flex items-start justify-between gap-3 rounded-md border border-accent/40 bg-accent/10 p-3 text-sm text-accent">
+          <span>{cascadeNotice}</span>
+          <button
+            type="button"
+            onClick={() => setCascadeNotice(null)}
+            className="text-xs text-accent/80 hover:text-accent"
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
         </div>
       )}
 

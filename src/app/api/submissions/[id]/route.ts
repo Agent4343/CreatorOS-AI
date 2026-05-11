@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AuthError, requireMembership, requireUser } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
+import { cascadeFieldChangesToSiblings } from "@/lib/batchCascade";
 import {
   canWriteSection,
   computeSectionLock,
@@ -72,7 +73,7 @@ export async function PATCH(
     const { data: existing, error: getErr } = await sb
       .from("submissions")
       .select(
-        "id, org_id, status, data, started_by, last_edited_by, signature_assignments, form_versions(schema)",
+        "id, org_id, status, data, started_by, last_edited_by, signature_assignments, batch_id, form_versions(schema)",
       )
       .eq("id", id)
       .maybeSingle();
@@ -88,6 +89,7 @@ export async function PATCH(
       started_by: string;
       last_edited_by: string | null;
       signature_assignments: SignatureAssignments | null;
+      batch_id: string | null;
       form_versions: { schema: FormDefinition } | null;
     };
 
@@ -226,7 +228,50 @@ export async function PATCH(
       });
     }
 
-    return NextResponse.json({ ok: true });
+    // Auto-cascade to batch siblings. When the source row is part of
+    // a batch, propagate field changes to siblings whose section is
+    // shared with this one (heli admin / OIM / supervisor-within-
+    // crew). Inductee sections never cascade. The cascade is best-
+    // effort and the source save has already committed — a failure
+    // here doesn't undo the source. We surface the summary so the
+    // runner can show "synced to N siblings."
+    let cascade: Awaited<
+      ReturnType<typeof cascadeFieldChangesToSiblings>
+    > | null = null;
+    if (schema && e.batch_id) {
+      try {
+        cascade = await cascadeFieldChangesToSiblings({
+          sb,
+          sourceId: e.id,
+          sourceOrgId: e.org_id,
+          batchId: e.batch_id,
+          schema,
+          sourceAssignments: e.signature_assignments ?? {},
+          oldData: e.data ?? {},
+          newData: body.data,
+          actingUserId: user.id,
+        });
+        if (cascade.siblings_updated > 0) {
+          await writeAudit({
+            orgId: e.org_id,
+            actorUserId: user.id,
+            action: "submission.batch_field_cascade",
+            resourceType: "submission",
+            resourceId: e.id,
+            metadata: {
+              batch_id: e.batch_id,
+              siblings_updated: cascade.siblings_updated,
+              fields_written: cascade.fields_written,
+              skipped: cascade.skipped,
+            },
+          });
+        }
+      } catch (err) {
+        console.error("[patch] batch cascade failed (non-fatal)", err);
+      }
+    }
+
+    return NextResponse.json({ ok: true, cascade });
   } catch (err) {
     if (err instanceof AuthError) return err;
     return NextResponse.json(
