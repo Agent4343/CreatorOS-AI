@@ -451,6 +451,7 @@ export default function SubmissionRunner({
                 orgId={submission.org_id}
                 submissionId={submission.id}
                 assignment={signatureAssignments[f.id]}
+                missingInSection={missingByIndex[currentSection]}
               />
             ))}
           </div>
@@ -899,6 +900,7 @@ function FieldRenderer({
   orgId,
   submissionId,
   assignment,
+  missingInSection,
 }: {
   field: FormField;
   value: unknown;
@@ -911,6 +913,10 @@ function FieldRenderer({
   orgId: string;
   submissionId: string;
   assignment?: SignatureAssignments[string];
+  /** Labels of required fields in this section that are still empty.
+   * Drives the gate on the SignaturePad — you can't sign-off on
+   * data you haven't entered. */
+  missingInSection?: string[];
 }) {
   const disabled = !canEdit || !!signed;
   const labelEl = (
@@ -1199,7 +1205,25 @@ function FieldRenderer({
               {isRoleAssignment(assignment) ? "role" : "person"}.
             </div>
           ) : canEdit ? (
-            <SignaturePad onSign={onSign} />
+            missingInSection && missingInSection.length > 0 ? (
+              <div className="mt-1.5 rounded-md border border-warn/40 bg-warn/5 p-3 text-sm">
+                <div className="font-medium text-warn">
+                  Fill these in before signing
+                </div>
+                <ul className="mt-1 list-disc pl-4 text-muted">
+                  {missingInSection.map((label) => (
+                    <li key={label}>{label}</li>
+                  ))}
+                </ul>
+                <p className="mt-1 text-[11px] text-muted">
+                  A signature attests to the data in this section.
+                  Required fields must be filled before the system
+                  will accept a signature.
+                </p>
+              </div>
+            ) : (
+              <SignaturePad onSign={onSign} />
+            )
           ) : (
             <div className="mt-1.5 text-sm text-muted">Not signed yet.</div>
           )}

@@ -163,6 +163,42 @@ export async function POST(
     const containingSection = schema.sections.find((s) =>
       s.fields.some((f) => f.id === body.field_id),
     );
+
+    // Required-field gate. Signing a section attests to the data in
+    // that section — and "this is correct" can't be true if a
+    // required field is blank. Refuse the signature with a 422 that
+    // names the missing fields so the runner can highlight them.
+    // Auto-save runs every 5 sec, so by the time sign is clicked the
+    // submission row should be in sync with what the user sees; we
+    // read sRow.data here rather than trusting the client.
+    if (containingSection) {
+      const missing: string[] = [];
+      for (const f of containingSection.fields) {
+        if (!f.required) continue;
+        if (
+          f.type === "section_header" ||
+          f.type === "divider" ||
+          f.type === "signature"
+        ) {
+          continue;
+        }
+        const v = (sRow.data ?? {})[f.id];
+        const empty =
+          v == null || v === "" || (Array.isArray(v) && v.length === 0);
+        if (empty) missing.push(f.label || f.id);
+      }
+      if (missing.length > 0) {
+        return NextResponse.json(
+          {
+            error: `Required field${missing.length === 1 ? "" : "s"} not filled in: ${missing.join(", ")}.`,
+            missing_fields: missing,
+            section_id: containingSection.id,
+          },
+          { status: 422 },
+        );
+      }
+    }
+
     const effectiveRequiredRoleId =
       target.required_role_id ?? containingSection?.required_role_id;
     if (effectiveRequiredRoleId) {
