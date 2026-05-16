@@ -4,6 +4,7 @@ import { writeAudit } from "@/lib/audit";
 import { notifyNextSigner } from "@/lib/notifyNextSigner";
 import { notifySubmissionCompleted } from "@/lib/notifySubmissionCompleted";
 import { computeSignatureHash } from "@/lib/signatures";
+import { uploadSignaturePng } from "@/lib/signatureStorage";
 import { supabaseService } from "@/lib/supabase/server";
 import type { FormDefinition, SignatureAssignments } from "@/lib/types";
 
@@ -308,21 +309,44 @@ export async function POST(
       signedAt,
     });
 
+    // Pre-generate the row id so we can upload to storage at a
+    // stable path BEFORE inserting the row. If the row insert fails
+    // we orphan a blob, which we clean up below; the inverse order
+    // (insert then upload then update) leaves an orphaned row with
+    // no image, which is harder to detect.
+    const signatureId = crypto.randomUUID();
+    const imagePath = await uploadSignaturePng({
+      orgId: sRow.org_id,
+      submissionId: sRow.id,
+      signatureId,
+      dataUrl: body.signature_image,
+    });
+
     const { error: insErr } = await sb.from("submission_signatures").insert({
+      id: signatureId,
       submission_id: sRow.id,
       org_id: sRow.org_id,
       field_id: body.field_id,
       signer_user_id: user.id,
       signer_name: user.user_metadata?.full_name ?? user.email ?? "Unknown",
       signer_email: user.email ?? "",
-      signature_image: body.signature_image,
+      signature_image_path: imagePath,
       signed_at: signedAt,
       ip_address: fp.ip_address,
       user_agent: fp.user_agent,
       geolocation: body.geolocation ?? null,
       data_hash: dataHash,
     });
-    if (insErr) throw insErr;
+    if (insErr) {
+      // Best-effort cleanup. If the storage delete also fails the
+      // worst outcome is a stranded PNG no row points at; a periodic
+      // janitor can prune those.
+      await sb.storage
+        .from("signatures")
+        .remove([imagePath])
+        .catch(() => undefined);
+      throw insErr;
+    }
 
     // Did this signature complete every required signature on the form?
     const { data: existingSigs, error: sigsErr } = await sb
@@ -485,9 +509,31 @@ export async function POST(
           signedAt,
         });
 
+        // Upload a per-sibling copy of the PNG. We could share one
+        // blob across siblings but the storage cost is trivial and
+        // a per-sibling object lets us delete one sibling's data
+        // without touching another's.
+        const sibSignatureId = crypto.randomUUID();
+        let sibImagePath: string;
+        try {
+          sibImagePath = await uploadSignaturePng({
+            orgId: sib.org_id,
+            submissionId: sib.id,
+            signatureId: sibSignatureId,
+            dataUrl: body.signature_image,
+          });
+        } catch (uploadErr) {
+          batchResults.siblings_skipped.push({
+            id: sib.id,
+            reason: `upload failed: ${uploadErr instanceof Error ? uploadErr.message : String(uploadErr)}`,
+          });
+          continue;
+        }
+
         const { error: sibInsErr } = await sb
           .from("submission_signatures")
           .insert({
+            id: sibSignatureId,
             submission_id: sib.id,
             org_id: sib.org_id,
             field_id: body.field_id,
@@ -495,7 +541,7 @@ export async function POST(
             signer_name:
               user.user_metadata?.full_name ?? user.email ?? "Unknown",
             signer_email: user.email ?? "",
-            signature_image: body.signature_image,
+            signature_image_path: sibImagePath,
             signed_at: signedAt,
             ip_address: fp.ip_address,
             user_agent: fp.user_agent,
@@ -503,6 +549,10 @@ export async function POST(
             data_hash: sibHash,
           });
         if (sibInsErr) {
+          await sb.storage
+            .from("signatures")
+            .remove([sibImagePath])
+            .catch(() => undefined);
           batchResults.siblings_skipped.push({
             id: sib.id,
             reason: `insert failed: ${sibInsErr.message}`,

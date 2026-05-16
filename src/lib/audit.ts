@@ -1,4 +1,5 @@
 import { requestFingerprint } from "./auth";
+import { captureError } from "./sentry";
 import { supabaseService } from "./supabase/server";
 
 /**
@@ -37,10 +38,11 @@ export async function writeAudit(args: {
     user_agent,
   });
   if (error) {
-    // Audit failures should never silently drop. Log loudly server-side
-    // but don't fail the user's action — the alternative (rolling back
-    // a successful submission because audit failed) is worse than a
-    // missing audit row.
+    // Audit failures should never silently drop. Capture to Sentry +
+    // log locally; don't fail the user's action — the alternative
+    // (rolling back a successful submission because audit failed) is
+    // worse than a missing audit row.
     console.error("[AUDIT WRITE FAILED]", error, args);
+    captureError(error, { where: "writeAudit", action: args.action });
   }
 }

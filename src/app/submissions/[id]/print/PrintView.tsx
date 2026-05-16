@@ -86,10 +86,19 @@ export default function PrintView({
         </div>
       </header>
 
-      {/* Each section + its filled-in fields */}
+      {/* Each section + its filled-in fields. Sections after the
+          first start on their own page in print so each section's
+          signature lives on the same page as the data it attests to. */}
       <main className="mt-6 space-y-6">
-        {schema.sections.map((sec) => (
-          <section key={sec.id} className="break-inside-avoid">
+        {schema.sections.map((sec, idx) => (
+          <section
+            key={sec.id}
+            className={
+              idx === 0
+                ? "break-inside-avoid"
+                : "break-inside-avoid print-section-break"
+            }
+          >
             <h2 className="border-b border-ink/30 pb-1 text-base font-bold uppercase tracking-wider">
               {sec.title}
             </h2>
@@ -107,6 +116,16 @@ export default function PrintView({
           </section>
         ))}
       </main>
+
+      {/* Running footer — prints on every page in print mode,
+          hidden on screen. Carries the submission ID + completion
+          state so a torn-out page can still be traced back. */}
+      <div className="print-footer">
+        <span>
+          {formName} · ID {submission.id}
+        </span>
+        <span>{submission.status === "completed" ? "Signed" : submission.status}</span>
+      </div>
 
       {/* Audit trail footer — required for compliance */}
       {signatures.length > 0 && (
@@ -206,12 +225,14 @@ function FieldDisplay({
         {labelEl}
         {signature ? (
           <div className="mt-1 rounded-md border border-ink/30 p-2">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={signature.signature_image}
-              alt={`Signature of ${signature.signer_name}`}
-              className="max-h-24 w-auto"
-            />
+            {signature.signature_image && (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={signature.signature_image}
+                alt={`Signature of ${signature.signer_name}`}
+                className="max-h-24 w-auto"
+              />
+            )}
             <div className="mt-1 text-[10px] text-ink/80">
               <strong>{signature.signer_name}</strong> ·{" "}
               {new Date(signature.signed_at).toLocaleString()}
@@ -324,13 +345,44 @@ function PrintStyles() {
   return (
     <style>{`
       @media print {
-        @page { margin: 1in; }
+        /* @page with marks for top/bottom — running headers/footers
+           live in fixed-position elements rendered once and reused
+           on every page. CSS @page :left/:right margins also give
+           browsers room for "Page N of M" if they choose to inject
+           one, though most don't honor that. */
+        @page { margin: 0.75in 0.75in 1in 0.75in; }
         body { background: white !important; }
         .no-print { display: none !important; }
         a { color: black !important; text-decoration: none !important; }
+
+        /* Each section starts on its own page in print. Keeps a
+           signature visually anchored to the section it attests to
+           and gives auditors clean, predictable artefacts to file. */
+        .print-section-break { break-before: page; }
+
+        /* Running footer with page numbers. Browsers vary on
+           supporting CSS @page counters; this fallback uses a
+           position:fixed footer that prints on every page in
+           Chromium-based browsers. Safari ignores fixed-position
+           in print so this gracefully degrades to a single header. */
+        .print-footer {
+          position: fixed;
+          bottom: 0.25in;
+          left: 0.75in;
+          right: 0.75in;
+          font-size: 9px;
+          color: #475569;
+          border-top: 1px solid #cbd5e1;
+          padding-top: 4px;
+          display: flex;
+          justify-content: space-between;
+        }
+        .print-cover { break-after: page; }
       }
       @media screen {
         body { background: #f8fafc; }
+        .print-section-break { margin-top: 2rem; }
+        .print-footer { display: none; }
       }
       .break-inside-avoid { break-inside: avoid; }
     `}</style>

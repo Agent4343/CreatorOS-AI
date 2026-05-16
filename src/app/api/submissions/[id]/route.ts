@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { AuthError, requireMembership, requireUser } from "@/lib/auth";
 import { writeAudit } from "@/lib/audit";
 import { cascadeFieldChangesToSiblings } from "@/lib/batchCascade";
+import { captureError } from "@/lib/sentry";
 import {
   canWriteSection,
   computeSectionLock,
@@ -73,7 +74,7 @@ export async function PATCH(
     const { data: existing, error: getErr } = await sb
       .from("submissions")
       .select(
-        "id, org_id, status, data, started_by, last_edited_by, signature_assignments, batch_id, form_versions(schema)",
+        "id, org_id, status, data, started_by, last_edited_by, signature_assignments, batch_id, last_cascade_at, form_versions(schema)",
       )
       .eq("id", id)
       .maybeSingle();
@@ -90,6 +91,7 @@ export async function PATCH(
       last_edited_by: string | null;
       signature_assignments: SignatureAssignments | null;
       batch_id: string | null;
+      last_cascade_at: string | null;
       form_versions: { schema: FormDefinition } | null;
     };
 
@@ -250,6 +252,7 @@ export async function PATCH(
           oldData: e.data ?? {},
           newData: body.data,
           actingUserId: user.id,
+          lastCascadeAt: e.last_cascade_at,
         });
         if (cascade.siblings_updated > 0) {
           await writeAudit({
@@ -267,7 +270,14 @@ export async function PATCH(
           });
         }
       } catch (err) {
-        console.error("[patch] batch cascade failed (non-fatal)", err);
+        // Cascade is best-effort — source save already committed.
+        // Surface to Sentry so a silent cascade failure (which the
+        // admin can't see) doesn't go unnoticed in monitoring.
+        captureError(err, {
+          where: "patch.batch_cascade",
+          submission_id: e.id,
+          batch_id: e.batch_id,
+        });
       }
     }
 

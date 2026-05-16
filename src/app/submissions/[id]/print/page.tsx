@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { listUserOrgs } from "@/lib/orgs";
+import { resolveSignatureImages } from "@/lib/signatureStorage";
 import { verifySubmissionToken } from "@/lib/submissionLinks";
 import { supabaseService } from "@/lib/supabase/server";
 import type {
@@ -108,7 +109,22 @@ async function renderPrint(
     .select("*")
     .eq("submission_id", s.id)
     .order("signed_at", { ascending: true });
-  const signatures = (sigs ?? []) as SignatureRow[];
+  const rawSignatures = (sigs ?? []) as SignatureRow[];
+
+  // Resolve each signature to a renderable src — signed URL for
+  // storage-backed rows, the inline base64 for legacy. Server-side
+  // so the PrintView gets a flat string and can pass it straight to
+  // <img>. Done in one batched storage call rather than N.
+  const resolved = await resolveSignatureImages(
+    rawSignatures.map((r) => ({
+      signature_image: r.signature_image,
+      signature_image_path: r.signature_image_path,
+    })),
+  );
+  const signatures = rawSignatures.map((r, i) => ({
+    ...r,
+    signature_image: resolved[i] ?? r.signature_image,
+  }));
 
   const photoUrls: Record<string, string> = {};
   for (const sec of schema.sections) {

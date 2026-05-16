@@ -223,7 +223,14 @@ export type SignatureRow = {
   signer_user_id: string;
   signer_name: string;
   signer_email: string;
-  signature_image: string;
+  /** Legacy: base64 PNG inline. Nullable because rows written after
+   * 0010_signature_storage.sql moved the bytes to Supabase Storage
+   * and store only `signature_image_path`. Reads should prefer the
+   * resolveSignatureImage helper which falls back transparently. */
+  signature_image: string | null;
+  /** Storage object path in the "signatures" bucket. Null for
+   * legacy rows. */
+  signature_image_path: string | null;
   signed_at: string;
   ip_address: string | null;
   user_agent: string | null;

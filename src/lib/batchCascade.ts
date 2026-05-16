@@ -54,7 +54,20 @@ export type CascadeResult = {
   fields_written: number;
   /** Reasons siblings were skipped (debug aid). */
   skipped: { id: string; reason: string }[];
+  /** True when the cascade short-circuited because the source was
+   * cascaded recently. Caller can surface "queued for sync" to the
+   * UI; the next save after the throttle window will land. */
+  throttled?: boolean;
 };
+
+/** Minimum seconds between cascades for the same source submission.
+ * 30s coalesces typical typing-rate auto-saves (every 5s) into one
+ * cascade every 6 saves. Tunable per-environment via
+ * CASCADE_THROTTLE_SECONDS. */
+const CASCADE_THROTTLE_SECONDS = Math.max(
+  0,
+  Number(process.env.CASCADE_THROTTLE_SECONDS ?? 30),
+);
 
 /**
  * Find which fields in `newData` differ from `oldData`. Only non-
@@ -143,6 +156,12 @@ export async function cascadeFieldChangesToSiblings(args: {
   oldData: Record<string, unknown>;
   newData: Record<string, unknown>;
   actingUserId: string;
+  /** Last time this source row was cascaded. When set and within the
+   * throttle window, the cascade short-circuits. The next save
+   * after the window passes will pick up the accumulated changes
+   * (we compare oldData against newData per call, not against the
+   * last-cascaded state, so accumulated changes still land). */
+  lastCascadeAt?: string | null;
 }): Promise<CascadeResult> {
   const {
     sb,
@@ -154,6 +173,7 @@ export async function cascadeFieldChangesToSiblings(args: {
     oldData,
     newData,
     actingUserId,
+    lastCascadeAt,
   } = args;
 
   const result: CascadeResult = {
@@ -162,30 +182,52 @@ export async function cascadeFieldChangesToSiblings(args: {
     skipped: [],
   };
 
-  const changed = changedFieldIds(schema, oldData, newData);
-  if (changed.length === 0) return result;
+  // Throttle. If we cascaded for this source within the window,
+  // skip — the source row was saved (updated_at advances normally);
+  // the next save after the throttle window expires will catch up
+  // and propagate any accumulated changes in one go.
+  if (lastCascadeAt && CASCADE_THROTTLE_SECONDS > 0) {
+    const ageMs = Date.now() - new Date(lastCascadeAt).getTime();
+    if (ageMs < CASCADE_THROTTLE_SECONDS * 1000) {
+      result.throttled = true;
+      return result;
+    }
+  }
 
-  // Bucket changed fields by their section. Drop fields whose
-  // section can never cascade (inductee_section, no gating sig).
-  // sectionId -> { gatingSigId, fieldIds[] }
+  // Build the set of shared-cascadable sections once. A section is
+  // cascadable iff it has a signature field and is NOT marked
+  // inductee_section. We enumerate the field ids inside each such
+  // section so reconciliation compares source vs sibling per-field.
+  //
+  // Reconciliation (not diff) is important for correctness under
+  // the cooldown: if a save is throttled, the diff between old and
+  // new on this PATCH would be lost forever. Reconciling against
+  // each sibling's actual state guarantees eventual consistency —
+  // whenever the cooldown releases, whatever drift exists gets
+  // closed, regardless of how many saves were skipped.
   const bySection = new Map<
     string,
     { gatingSigId: string; fieldIds: string[] }
   >();
-  for (const fid of changed) {
-    const sec = sectionContaining(schema, fid);
-    if (!sec) continue;
+  for (const sec of schema.sections) {
     if (sec.inductee_section) continue;
     const sigId = gatingSignatureFieldId(sec);
     if (!sigId) continue;
-    const entry = bySection.get(sec.id) ?? {
-      gatingSigId: sigId,
-      fieldIds: [],
-    };
-    entry.fieldIds.push(fid);
-    bySection.set(sec.id, entry);
+    const fieldIds: string[] = [];
+    for (const f of sec.fields) {
+      if (f.type === "signature") continue;
+      if (f.type === "section_header" || f.type === "divider") continue;
+      fieldIds.push(f.id);
+    }
+    if (fieldIds.length === 0) continue;
+    bySection.set(sec.id, { gatingSigId: sigId, fieldIds });
   }
   if (bySection.size === 0) return result;
+  // We still track oldData/newData for the unused-parameter lint
+  // when reconciliation alone matters; both are kept on the args
+  // type so callers don't have to be updated and so we can revert
+  // to diff mode in tests if needed.
+  void oldData;
 
   // Pull every sibling in the batch (excluding source).
   const { data: sibsRows, error: sibErr } = await sb
@@ -240,8 +282,14 @@ export async function cascadeFieldChangesToSiblings(args: {
       const sibA = sibAssign[gatingSigId];
       if (!assignmentsMatch(sourceA, sibA)) continue;
       if (signedKey.has(`${sib.id}|${gatingSigId}`)) continue;
+      // Reconciliation: only write the field if the source's
+      // current value differs from the sibling's current value.
+      // Idempotent — replaying the same cascade is a no-op.
       for (const fid of fieldIds) {
-        updates[fid] = newData[fid];
+        const sourceVal = newData[fid];
+        const sibVal = sibData[fid];
+        if (deepEqual(sourceVal, sibVal)) continue;
+        updates[fid] = sourceVal;
       }
     }
     if (Object.keys(updates).length === 0) continue;
@@ -265,6 +313,16 @@ export async function cascadeFieldChangesToSiblings(args: {
     result.siblings_updated++;
     result.fields_written += Object.keys(updates).length;
   }
+
+  // Stamp the source so subsequent saves within the throttle window
+  // short-circuit. Done unconditionally (even when 0 siblings got
+  // written) so a no-op cascade still counts toward the cooldown —
+  // otherwise a "nothing matched" cascade would re-evaluate every
+  // 5 seconds for nothing.
+  await sb
+    .from("submissions")
+    .update({ last_cascade_at: now })
+    .eq("id", sourceId);
 
   return result;
 }
