@@ -66,6 +66,7 @@ export async function POST(req: NextRequest) {
       inductee_signature_field_id?: string;
       inductee_name_field_id?: string;
       batch_roster_field_id?: string;
+      batch_label?: string;
     };
 
     if (!body.org_id || !body.form_id) {
@@ -465,6 +466,7 @@ export async function POST(req: NextRequest) {
         data,
         started_by: user.id,
         batch_id: batchId,
+        batch_label: body.batch_label?.trim() || null,
         signature_assignments: assignments,
       };
     });

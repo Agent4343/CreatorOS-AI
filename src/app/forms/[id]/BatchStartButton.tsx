@@ -91,6 +91,19 @@ export default function BatchStartButton({
   // group. Empty string = don't populate any field.
   const [batchRosterFieldId, setBatchRosterFieldId] = useState<string>("");
 
+  // Human label for this batch — appears in the batch dashboard,
+  // submissions list, audit, and the URL bar. Default to
+  // "<form name> · <today>" so the admin doesn't have to type
+  // anything to get a usable label.
+  const [batchLabel, setBatchLabel] = useState<string>(() => {
+    const today = new Date().toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+    return `Batch · ${today}`;
+  });
+
   /** Per-signature user-mode assignments for the non-inductee signers
    * (OIM, Supervisor, Heli admin). Keyed by field_id. Role-mode and
    * per-inductee assignments live in their own state maps.
@@ -154,6 +167,108 @@ export default function BatchStartButton({
 
   function addInductee() {
     setInductees([...inductees, { name: "", email: "", overrides: {} }]);
+  }
+
+  // Bulk paste state. Heli admin types one row at a time on a tablet
+  // is a 5am misery for an 8-person crew. Paste-list flips that — a
+  // dispatcher can prepare the manifest in Notes/Sheets/Slack and
+  // dump it in.
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState("");
+  const [pasteError, setPasteError] = useState<string | null>(null);
+
+  /**
+   * Parse a paste-list of inductees. Accepts permissive separators:
+   *   "Marcus Smith, marcus@x.com"
+   *   "Marcus Smith\tmarcus@x.com"
+   *   "Marcus Smith <marcus@x.com>"
+   *   "marcus@x.com" (name derived from local-part as a fallback)
+   * One row per line. Blank lines and lines starting with # are
+   * ignored. Returns { rows, errors } so the caller can show what
+   * couldn't be parsed without blocking the rest.
+   */
+  function parsePastedInductees(
+    text: string,
+  ): { rows: { name: string; email: string }[]; errors: string[] } {
+    const rows: { name: string; email: string }[] = [];
+    const errors: string[] = [];
+    const lines = text.split(/\r?\n/);
+    for (let i = 0; i < lines.length; i++) {
+      const raw = lines[i].trim();
+      if (!raw) continue;
+      if (raw.startsWith("#")) continue;
+      // "Marcus <marcus@x.com>" style
+      const angle = raw.match(/^(.+?)\s*<\s*([^<>\s]+@[^<>\s]+)\s*>$/);
+      let name = "";
+      let email = "";
+      if (angle) {
+        name = angle[1].trim();
+        email = angle[2].trim();
+      } else {
+        // Split on the first comma or tab — whichever is leftmost.
+        const idx = ((): number => {
+          const c = raw.indexOf(",");
+          const t = raw.indexOf("\t");
+          if (c === -1) return t;
+          if (t === -1) return c;
+          return Math.min(c, t);
+        })();
+        if (idx >= 0) {
+          name = raw.slice(0, idx).trim();
+          email = raw.slice(idx + 1).trim();
+        } else if (EMAIL_RE.test(raw)) {
+          // Bare email — derive a placeholder name from the local part.
+          email = raw;
+          name = raw
+            .split("@")[0]
+            .replace(/[._-]+/g, " ")
+            .replace(/\b\w/g, (c) => c.toUpperCase());
+        } else {
+          errors.push(`Line ${i + 1}: couldn't find an email`);
+          continue;
+        }
+      }
+      if (!name) {
+        errors.push(`Line ${i + 1}: missing name`);
+        continue;
+      }
+      if (!EMAIL_RE.test(email)) {
+        errors.push(`Line ${i + 1}: "${email}" doesn't look like an email`);
+        continue;
+      }
+      rows.push({ name, email });
+    }
+    return { rows, errors };
+  }
+
+  function applyPaste() {
+    setPasteError(null);
+    const { rows, errors } = parsePastedInductees(pasteText);
+    if (rows.length === 0) {
+      setPasteError(
+        errors[0] ??
+          "No inductees parsed. One per line: 'Name, email@example.com'",
+      );
+      return;
+    }
+    // Drop any leading empty inductee rows so a fresh paste doesn't
+    // leave "Inductee #1: (blank)" sitting at the top of the list.
+    setInductees((cur) => {
+      const trimmed = cur.filter(
+        (ind) => ind.name.trim() || ind.email.trim(),
+      );
+      return [
+        ...trimmed,
+        ...rows.map((r) => ({ ...r, overrides: {} })),
+      ];
+    });
+    setPasteText("");
+    setPasteOpen(false);
+    if (errors.length > 0) {
+      setError(
+        `Added ${rows.length} inductee${rows.length === 1 ? "" : "s"}. Skipped: ${errors.join("; ")}`,
+      );
+    }
   }
   function updateInductee(
     i: number,
@@ -331,17 +446,18 @@ export default function BatchStartButton({
           inductee_signature_field_id: inducteeSigFieldId || undefined,
           inductee_name_field_id: inducteeNameFieldId || undefined,
           batch_roster_field_id: batchRosterFieldId || undefined,
+          batch_label: batchLabel.trim() || undefined,
         }),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.error ?? "Batch start failed");
-      // Land on a view scoped to *this batch only* so the admin sees
-      // exactly the N submissions they just created — removes the
-      // ambiguity of dropping them onto the full form-history list
-      // where pre-existing rows could be mistaken for "the new batch."
+      // Land on the dedicated batch dashboard so the admin sees the
+      // whole crew at a glance (per-section completion, who's
+      // waiting on whom) — the catch-all submissions list buries
+      // that signal under unrelated history.
       const newBatchId = (body as { batch_id?: string }).batch_id;
       if (newBatchId) {
-        router.push(`/submissions?batch_id=${newBatchId}`);
+        router.push(`/batches/${newBatchId}`);
       } else {
         router.push(`/submissions?form_id=${formId}`);
       }
@@ -402,6 +518,22 @@ export default function BatchStartButton({
                 future batches just work.
               </p>
             </div>
+
+            <label className="block rounded-md border border-ink/10 bg-white p-2.5 text-sm">
+              <div className="font-medium">Batch label</div>
+              <div className="mt-0.5 text-[11px] text-muted">
+                Shown on the batch dashboard, submissions list, and
+                audit log. Something the crew will recognise — site
+                name + date is usually enough.
+              </div>
+              <input
+                type="text"
+                value={batchLabel}
+                onChange={(e) => setBatchLabel(e.target.value)}
+                placeholder="e.g. Hebron Induction · May 11"
+                className="mt-1.5 w-full rounded-md border border-ink/20 bg-white px-2 py-1 text-sm"
+              />
+            </label>
 
             <label className="block rounded-md border border-ink/10 bg-white p-2.5 text-sm">
               <div className="font-medium">
@@ -783,13 +915,63 @@ export default function BatchStartButton({
                 </div>
               );
             })}
-            <button
-              type="button"
-              onClick={addInductee}
-              className="w-full rounded-md border-2 border-dashed border-accent/40 bg-accent/5 px-3 py-2 text-sm font-medium text-accent hover:bg-accent/10"
-            >
-              + Add another inductee ({inductees.length + 1} in total)
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={addInductee}
+                className="flex-1 rounded-md border-2 border-dashed border-accent/40 bg-accent/5 px-3 py-2 text-sm font-medium text-accent hover:bg-accent/10"
+              >
+                + Add another inductee ({inductees.length + 1} in total)
+              </button>
+              <button
+                type="button"
+                onClick={() => setPasteOpen((v) => !v)}
+                className="rounded-md border border-ink/20 bg-white px-3 py-2 text-sm font-medium hover:bg-bg-2"
+              >
+                {pasteOpen ? "Cancel paste" : "Paste list…"}
+              </button>
+            </div>
+            {pasteOpen && (
+              <div className="space-y-2 rounded-md border border-ink/15 bg-white p-3">
+                <div className="text-[11px] text-muted">
+                  One inductee per line. Any of these forms work:
+                  <pre className="mt-1 whitespace-pre-wrap rounded-sm bg-bg-2 p-1.5 font-mono text-[10.5px] leading-tight text-ink">{`Marcus Smith, marcus@hebron.com
+Ashley Jones\tashley@hebron.com
+Priya Patel <priya@hebron.com>
+tom.brown@hebron.com`}</pre>
+                  Blank lines and # comments are skipped.
+                </div>
+                <textarea
+                  value={pasteText}
+                  onChange={(e) => setPasteText(e.target.value)}
+                  placeholder="Paste the manifest here…"
+                  rows={6}
+                  className="w-full rounded-md border border-ink/20 p-2 font-mono text-sm"
+                />
+                {pasteError && (
+                  <div className="text-xs text-err">{pasteError}</div>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={applyPaste}
+                    className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-bg"
+                  >
+                    Add to list
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPasteText("");
+                      setPasteError(null);
+                    }}
+                    className="rounded-md border border-ink/20 px-3 py-1.5 text-sm"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Pre-flight preview: every signature field × every inductee,

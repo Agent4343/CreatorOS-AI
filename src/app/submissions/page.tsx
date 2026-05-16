@@ -166,14 +166,24 @@ export default async function SubmissionsPage({
                 : "Every form fill across your team."}
           </p>
         </div>
-        {form_id && (
-          <a
-            href={`/forms/${form_id}`}
-            className="rounded-md border border-ink/20 px-3 py-1.5 text-sm text-ink no-underline"
-          >
-            ← back to template
-          </a>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {batch_id && (
+            <a
+              href={`/batches/${batch_id}`}
+              className="rounded-md bg-ink px-3 py-1.5 text-sm font-medium text-bg no-underline"
+            >
+              Batch dashboard →
+            </a>
+          )}
+          {form_id && (
+            <a
+              href={`/forms/${form_id}`}
+              className="rounded-md border border-ink/20 px-3 py-1.5 text-sm text-ink no-underline"
+            >
+              ← back to template
+            </a>
+          )}
+        </div>
       </div>
 
       {/* Waiting on you: the user is the assigned signer for an
