@@ -1,5 +1,5 @@
-import { sendEmail } from "./email";
 import { renderSubmissionCompletedEmail } from "./emailTemplates/submissionCompleted";
+import { enqueueEmail } from "./outbound";
 import { buildPrintLink } from "./submissionLinks";
 import { supabaseService } from "./supabase/server";
 import type {
@@ -88,32 +88,48 @@ export async function notifySubmissionCompleted(
       printLink,
     });
 
-    const result = await sendEmail({ to: recipients, subject, html });
+    // Enqueue one row per recipient. outbound_messages is the
+    // durable record of every send attempt; submission_email_log
+    // retains its idempotency guard (the row inserted below) so the
+    // existing "don't double-send" check at the top of this function
+    // keeps working.
+    const enqueueResults = await Promise.all(
+      recipients.map((to) =>
+        enqueueEmail({
+          orgId: s.org_id,
+          to,
+          subject,
+          html,
+          meta: {
+            kind: "completion",
+            submission_id: s.id,
+          },
+        }).catch((err) => ({
+          id: "",
+          sent: false,
+          error: err instanceof Error ? err.message : String(err),
+        })),
+      ),
+    );
 
-    // Always log — success or failure — so admins can see why an
-    // email didn't arrive.
     await sb.from("submission_email_log").insert({
       submission_id: s.id,
       org_id: s.org_id,
       kind: "completion",
       recipients,
-      provider_id:
-        "ok" in result && result.ok ? result.id : null,
-      error:
-        "ok" in result && !result.ok
-          ? result.error
-          : "skipped" in result
-            ? `skipped: ${result.reason}`
-            : null,
+      provider_id: null,
+      error: enqueueResults.every((r) => r.sent)
+        ? null
+        : "queued for retry",
     });
 
-    if ("ok" in result && result.ok) {
+    if (enqueueResults.some((r) => r.sent)) {
       return { ok: true, sentTo: recipients };
     }
-    if ("skipped" in result) {
-      return { ok: false, reason: result.reason };
-    }
-    return { ok: false, reason: result.error };
+    return {
+      ok: false,
+      reason: "queued for retry — provider unavailable on first attempt",
+    };
   } catch (e) {
     console.error("[notifySubmissionCompleted] failed", e);
     return {

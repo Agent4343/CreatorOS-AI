@@ -29,6 +29,7 @@ const DEFAULT_FIELD_LABEL: Record<FieldType, string> = {
   signature: "Signature",
   gps: "Site location",
   timestamp: "Timestamp",
+  document_expiry: "Document with expiry",
   section_header: "Section heading",
   divider: "Divider",
 };

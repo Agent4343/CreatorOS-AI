@@ -19,6 +19,7 @@ type Database = {
       submission_email_log: AnyTable;
       audit_logs: AnyTable;
       org_roles: AnyTable;
+      outbound_messages: AnyTable;
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

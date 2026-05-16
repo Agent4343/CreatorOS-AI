@@ -194,6 +194,63 @@ export default function SubmissionRunner({
     return () => window.removeEventListener("beforeunload", beforeUnload);
   }, []);
 
+  // Online/offline state. Field workers fill these forms at sites
+  // with patchy cell — the form keeps accepting input offline
+  // (localStorage holds the draft), and the moment connectivity
+  // returns we trigger a save to flush the queue.
+  const [online, setOnline] = useState(() =>
+    typeof navigator === "undefined" ? true : navigator.onLine !== false,
+  );
+  useEffect(() => {
+    function handleOnline() {
+      setOnline(true);
+      if (dirtyRef.current) save();
+    }
+    function handleOffline() {
+      setOnline(false);
+    }
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Restore a local draft on first mount if it's newer than what
+  // the server returned. A signal of "tab crashed mid-fill, you
+  // reloaded, here's your work back" without making the user
+  // suspect the server failed.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage?.getItem(`ff-draft-${submission.id}`);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        data: Record<string, unknown>;
+        at: string;
+      };
+      const draftAt = new Date(parsed.at).getTime();
+      // Trust the server copy if it's newer than the local draft
+      // (someone else saved over our work on another device).
+      const serverAt = (submission as { last_edited_at?: string | null })
+        .last_edited_at
+        ? new Date(
+            (submission as { last_edited_at?: string }).last_edited_at!,
+          ).getTime()
+        : 0;
+      if (draftAt > serverAt) {
+        setData(parsed.data);
+        dataRef.current = parsed.data;
+        dirtyRef.current = true;
+        setSaveState("dirty");
+      }
+    } catch {
+      // ignore malformed drafts
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function set(fieldId: string, value: unknown) {
     setData((d) => ({ ...d, [fieldId]: value }));
     dirtyRef.current = true;
@@ -204,6 +261,29 @@ export default function SubmissionRunner({
     if (!canEdit) return true;
     setSaveState("saving");
     setError(null);
+    // Persist a local copy of the current data first — if the
+    // network drops mid-save, this is the recovery anchor. The key
+    // is per-submission so reloading the tab restores exactly the
+    // form you were filling, not someone else's.
+    try {
+      window.localStorage?.setItem(
+        `ff-draft-${submission.id}`,
+        JSON.stringify({
+          data: dataRef.current,
+          at: new Date().toISOString(),
+        }),
+      );
+    } catch {
+      // Storage quota or privacy mode — ignore. Auto-save will keep
+      // retrying against the server.
+    }
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      // Offline. Mark dirty, surface state, and short-circuit before
+      // we waste cycles on a fetch that will fail. The "online"
+      // listener below replays the queue once connectivity returns.
+      setSaveState("dirty");
+      return false;
+    }
     try {
       const res = await fetch(`/api/submissions/${submission.id}`, {
         method: "PATCH",
@@ -215,6 +295,14 @@ export default function SubmissionRunner({
       setSavedAt(new Date().toLocaleTimeString());
       dirtyRef.current = false;
       setSaveState("saved");
+      // Drop the local draft once the server has confirmed the save —
+      // keeps stale data out of localStorage and avoids "restore an
+      // older copy" confusion if the user comes back later.
+      try {
+        window.localStorage?.removeItem(`ff-draft-${submission.id}`);
+      } catch {
+        // ignore
+      }
       // Server-side cascade hit a sibling? Surface a quiet inline
       // notice so the heli admin sees that filling in once spread to
       // the rest of the batch — no popup, no extra click.
@@ -365,7 +453,17 @@ export default function SubmissionRunner({
           >
             ← back
           </a>
-          <SaveIndicator state={saveState} savedAt={savedAt} canEdit={canEdit} />
+          <div className="flex items-center gap-2">
+            {!online && (
+              <span
+                className="inline-flex items-center gap-1 rounded-md bg-warn/15 px-2 py-0.5 text-[11px] font-medium text-warn"
+                title="Offline — changes are kept locally and will sync when you reconnect."
+              >
+                <span aria-hidden>●</span> offline
+              </span>
+            )}
+            <SaveIndicator state={saveState} savedAt={savedAt} canEdit={canEdit} />
+          </div>
         </div>
         <h1 className="mt-1 truncate text-base font-bold md:text-xl">
           {submission.form_name}
@@ -1137,6 +1235,81 @@ function FieldRenderer({
           disabled={disabled}
         />
       );
+    case "document_expiry": {
+      // Stored shape: { date: "YYYY-MM-DD", photos: string[] }.
+      // Photos array reuses the same PhotoField storage path so
+      // existing storage policies and signed-URL flows work
+      // unchanged; date is a plain ISO date input. Reminders fire
+      // off the date alone — the photo is for the auditor's record.
+      const cur = (value ?? { date: "", photos: [] }) as {
+        date: string;
+        photos: string[];
+      };
+      const today = new Date();
+      const expDate = cur.date ? new Date(cur.date) : null;
+      const daysUntil =
+        expDate && !isNaN(expDate.getTime())
+          ? Math.ceil(
+              (expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+            )
+          : null;
+      let warn: string | null = null;
+      if (daysUntil != null) {
+        if (daysUntil < 0) warn = `Expired ${-daysUntil} day(s) ago.`;
+        else if (daysUntil <= 7) warn = `Expires in ${daysUntil} day(s).`;
+        else if (daysUntil <= 30)
+          warn = `Expires in ${daysUntil} day(s) — schedule a refresh.`;
+      }
+      return (
+        <div>
+          {labelEl}
+          <div className="mt-1.5 grid gap-2 md:grid-cols-2">
+            <label className="block">
+              <span className="text-[11px] text-muted">Expiry date</span>
+              <input
+                type="date"
+                disabled={disabled}
+                value={cur.date}
+                onChange={(e) =>
+                  onChange({ ...cur, date: e.target.value })
+                }
+                className="mt-1 min-h-[48px] w-full rounded-md border border-ink/20 bg-white p-3 text-base disabled:bg-bg"
+              />
+            </label>
+            <div>
+              <span className="text-[11px] text-muted">
+                Photo of document (optional)
+              </span>
+              <div className="mt-1">
+                <PhotoField
+                  field={{ ...field, type: "photo", multiple: false, max: 1 }}
+                  orgId={orgId}
+                  submissionId={submissionId}
+                  value={cur.photos}
+                  onChange={(paths) =>
+                    onChange({ ...cur, photos: paths })
+                  }
+                  disabled={disabled}
+                />
+              </div>
+            </div>
+          </div>
+          {warn && (
+            <div
+              className={`mt-2 rounded-md border p-2 text-xs ${
+                daysUntil != null && daysUntil < 0
+                  ? "border-err/40 bg-err/5 text-err"
+                  : daysUntil != null && daysUntil <= 7
+                    ? "border-err/40 bg-err/5 text-err"
+                    : "border-warn/40 bg-warn/5 text-warn"
+              }`}
+            >
+              {warn}
+            </div>
+          )}
+        </div>
+      );
+    }
     case "gps":
       return (
         <div>

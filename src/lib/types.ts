@@ -18,6 +18,11 @@ export const FIELD_TYPES = [
   "signature",
   "gps",
   "timestamp",
+  // Document with expiry — captures a date and an optional photo of
+  // the document itself (medical certificate, dangerous-goods card,
+  // pilot license). The daily expiry-reminders cron uses the date
+  // to ping the inductee + admin 30 and 7 days before lapse.
+  "document_expiry",
   "section_header",
   "divider",
 ] as const;

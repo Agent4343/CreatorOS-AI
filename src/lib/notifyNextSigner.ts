@@ -1,5 +1,5 @@
-import { sendEmail } from "./email";
 import { renderAwaitingSignatureEmail } from "./emailTemplates/awaitingSignature";
+import { enqueueEmail } from "./outbound";
 import { supabaseService } from "./supabase/server";
 
 function appBase(): string {
@@ -140,32 +140,36 @@ export async function notifyNextSigner(args: {
       previousSignerName: args.justSignedByName,
     });
 
-    const result = await sendEmail({
-      to: recipients,
-      subject,
-      html,
-    });
+    // Enqueue one row per recipient. The queue handles the immediate
+    // send attempt + durable retry; we don't need to also write
+    // submission_email_log here because outbound_messages is now the
+    // canonical record of every outbound attempt.
+    const enqueueResults = await Promise.all(
+      recipients.map((to) =>
+        enqueueEmail({
+          orgId: s.org_id,
+          to,
+          subject,
+          html,
+          meta: {
+            kind: "next_signer",
+            submission_id: s.id,
+            field_id: next!.fieldId,
+          },
+        }).catch((err) => ({
+          id: "",
+          sent: false,
+          error: err instanceof Error ? err.message : String(err),
+        })),
+      ),
+    );
 
-    // Log into the email log table even though kind != 'completion'.
-    await sb.from("submission_email_log").insert({
-      submission_id: s.id,
-      org_id: s.org_id,
-      kind: `awaiting_signature:${next.fieldId}`,
-      recipients,
-      provider_id: "ok" in result && result.ok ? result.id : null,
-      error:
-        "ok" in result && !result.ok
-          ? result.error
-          : "skipped" in result
-            ? `skipped: ${result.reason}`
-            : null,
-    });
-
-    if ("ok" in result && result.ok) {
-      return { ok: true, sentTo: recipients.join(",") };
-    }
-    if ("skipped" in result) return { ok: false, reason: result.reason };
-    return { ok: false, reason: result.error };
+    const anySent = enqueueResults.some((r) => r.sent);
+    if (anySent) return { ok: true, sentTo: recipients.join(",") };
+    return {
+      ok: false,
+      reason: "queued for retry — provider unavailable on first attempt",
+    };
   } catch (e) {
     console.error("[notifyNextSigner] failed", e);
     return { ok: false, reason: e instanceof Error ? e.message : "unknown" };
