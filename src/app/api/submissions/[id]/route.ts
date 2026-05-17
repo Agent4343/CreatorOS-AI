@@ -120,8 +120,10 @@ export async function PATCH(
     // server has now, and return the current state so the runner
     // can show a "this row was edited elsewhere" conflict prompt.
     //
-    // Bypassable by omitting expected_updated_at — the "use my
-    // version" branch of the conflict prompt sends without it.
+    // Bypassable by passing the server's CURRENT updated_at as the
+    // override — the "use my version" branch of the conflict prompt
+    // does exactly that. Omitting the field entirely also bypasses
+    // (for non-runner callers like the smoke-import script).
     if (
       body.expected_updated_at &&
       body.expected_updated_at !== e.updated_at
@@ -285,7 +287,6 @@ export async function PATCH(
           batchId: e.batch_id,
           schema,
           sourceAssignments: e.signature_assignments ?? {},
-          oldData: e.data ?? {},
           newData: body.data,
           actingUserId: user.id,
           lastCascadeAt: e.last_cascade_at,

@@ -278,7 +278,7 @@ export default async function BatchDashboardPage({
                     return (
                       <td key={sec.id} className="px-3 py-2 align-top">
                         {signed ? (
-                          <span className="inline-flex items-center gap-1 rounded-md bg-success/15 px-2 py-0.5 text-xs font-medium text-success">
+                          <span className="inline-flex items-center gap-1 rounded-md bg-ok/15 px-2 py-0.5 text-xs font-medium text-ok">
                             <span aria-hidden>●</span> signed
                           </span>
                         ) : s.status === "completed" ? (

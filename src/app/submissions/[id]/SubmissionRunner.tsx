@@ -28,6 +28,11 @@ type SubmissionShape = {
    * successful save. */
   updated_at: string;
   last_edited_at?: string | null;
+  /** Birth timestamp. Used as the lower bound when deciding whether
+   * a localStorage draft is fresher than the server copy — without
+   * this, a brand-new submission (last_edited_at=null) would always
+   * lose against any stale ff-draft-<id> entry. */
+  created_at: string;
 };
 
 type SignedField = {
@@ -54,6 +59,27 @@ type Teammate = {
 };
 
 type SaveState = "idle" | "saving" | "saved" | "dirty" | "error";
+
+/**
+ * Centralised "is this field considered empty for the required-field
+ * gate?" check. Used by both the runner's per-section missing-fields
+ * memo and (in principle) anywhere else that has to decide if a
+ * required field is actually filled.
+ *
+ * Scalars: null / undefined / empty string = empty.
+ * Arrays: empty array = empty.
+ * document_expiry: empty when the .date is missing; the optional
+ *   photo doesn't gate the section (an inductee can present a paper
+ *   card and the operator types the expiry without snapping it).
+ */
+function isFieldEmpty(fieldType: string, v: unknown): boolean {
+  if (fieldType === "document_expiry") {
+    return !(v as { date?: string } | null | undefined)?.date;
+  }
+  return (
+    v == null || v === "" || (Array.isArray(v) && v.length === 0)
+  );
+}
 
 /**
  * Mobile-first form runner.
@@ -180,10 +206,7 @@ export default function SubmissionRunner({
         if (f.type === "section_header" || f.type === "divider") continue;
         if (f.type === "signature") continue; // handled separately
         const v = data[f.id];
-        const empty =
-          v == null ||
-          v === "" ||
-          (Array.isArray(v) && v.length === 0);
+        const empty = isFieldEmpty(f.type, v);
         if (empty) missing.push(f.label);
       }
       return missing;
@@ -251,12 +274,12 @@ export default function SubmissionRunner({
       const draftAt = new Date(parsed.at).getTime();
       // Trust the server copy if it's newer than the local draft
       // (someone else saved over our work on another device).
-      const serverAt = (submission as { last_edited_at?: string | null })
-        .last_edited_at
-        ? new Date(
-            (submission as { last_edited_at?: string }).last_edited_at!,
-          ).getTime()
-        : 0;
+      // On a freshly-created submission last_edited_at is null, so
+      // fall back to created_at — a draft predating the submission's
+      // birth can't possibly belong to it and must be a stale leftover.
+      const serverAt = submission.last_edited_at
+        ? new Date(submission.last_edited_at).getTime()
+        : new Date(submission.created_at).getTime();
       if (draftAt > serverAt) {
         setData(parsed.data);
         dataRef.current = parsed.data;
@@ -275,7 +298,7 @@ export default function SubmissionRunner({
     setSaveState("dirty");
   }
 
-  async function save(): Promise<boolean> {
+  async function save(overrideExpected?: string): Promise<boolean> {
     if (!canEdit) return true;
     setSaveState("saving");
     setError(null);
@@ -308,7 +331,12 @@ export default function SubmissionRunner({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           data: dataRef.current,
-          expected_updated_at: serverUpdatedAt,
+          // Caller can pass an override to bypass an in-flight
+          // conflict resolution. Without that, the React-closure
+          // reading of serverUpdatedAt is one render behind the
+          // setState that follows a 409, so the immediate retry
+          // would 409 again.
+          expected_updated_at: overrideExpected ?? serverUpdatedAt,
         }),
       });
       const body = await res.json().catch(() => ({}));
@@ -393,7 +421,11 @@ export default function SubmissionRunner({
     window.location.href = `/submissions/${submission.id}/print`;
   }
 
-  async function applySignature(fieldId: string, signatureImage: string) {
+  async function applySignature(
+    fieldId: string,
+    signatureImage: string,
+    overrideExpected?: string,
+  ) {
     setError(null);
     try {
       // Save current data first so the signature's data_hash binds to it.
@@ -421,7 +453,12 @@ export default function SubmissionRunner({
           signature_image: signatureImage,
           geolocation: geo,
           batch_apply: batchApply,
-          expected_updated_at: serverUpdatedAt,
+          // Override exists for symmetry with save() — currently
+          // unused since the sign-time conflict UI asks the user to
+          // reload rather than offering "force-sign with their
+          // version." If we ever add that branch, this hook is the
+          // bypass.
+          expected_updated_at: overrideExpected ?? serverUpdatedAt,
         }),
       });
       const body = await res.json().catch(() => ({}));
@@ -701,14 +738,16 @@ export default function SubmissionRunner({
             <button
               type="button"
               onClick={async () => {
-                // "Use my version" — adopt the server's updated_at
-                // so the next save bypasses the optimistic check,
-                // then immediately save. Server-side cascade will
-                // reconcile siblings as usual.
-                setServerUpdatedAt(conflict.current_updated_at);
+                // "Use my version" — push the server's new
+                // updated_at into save() as an override (state set
+                // here won't be visible to the save closure until
+                // after the next render), force-saves over their
+                // copy, and clears the conflict on success.
+                const newToken = conflict.current_updated_at;
+                setServerUpdatedAt(newToken);
                 setConflict(null);
                 dirtyRef.current = true;
-                await save();
+                await save(newToken);
               }}
               className="rounded-md bg-warn px-3 py-1.5 text-sm font-medium text-bg"
             >
@@ -761,7 +800,7 @@ export default function SubmissionRunner({
           {canEdit && (
             <button
               type="button"
-              onClick={save}
+              onClick={() => save()}
               disabled={saveState === "saving"}
               className="min-h-[48px] rounded-md border border-ink/20 px-3 text-sm text-ink disabled:opacity-50"
             >

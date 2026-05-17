@@ -73,6 +73,13 @@ const CASCADE_THROTTLE_SECONDS = Math.max(
  * Find which fields in `newData` differ from `oldData`. Only non-
  * signature, non-display fields are eligible; signatures move via
  * the /sign route, dividers and headers have no value.
+ *
+ * Note: as of the reconciliation rewrite this is no longer used by
+ * cascadeFieldChangesToSiblings — the cascade compares source vs
+ * each sibling directly, which is correct under the throttle. The
+ * function is kept exported because the unit tests exercise it
+ * and because future call sites (e.g. an audit-trail "what
+ * changed in this save?" feature) may want it.
  */
 export function changedFieldIds(
   schema: FormDefinition,
@@ -153,14 +160,15 @@ export async function cascadeFieldChangesToSiblings(args: {
   batchId: string;
   schema: FormDefinition;
   sourceAssignments: SignatureAssignments;
-  oldData: Record<string, unknown>;
+  /** Source row's data after the just-applied save. Reconciliation
+   * compares this against each sibling's data field-by-field. */
   newData: Record<string, unknown>;
   actingUserId: string;
   /** Last time this source row was cascaded. When set and within the
    * throttle window, the cascade short-circuits. The next save
-   * after the window passes will pick up the accumulated changes
-   * (we compare oldData against newData per call, not against the
-   * last-cascaded state, so accumulated changes still land). */
+   * after the window passes will reconcile against each sibling's
+   * actual state, so any accumulated drift from the skipped
+   * cascades catches up in one pass. */
   lastCascadeAt?: string | null;
 }): Promise<CascadeResult> {
   const {
@@ -170,7 +178,6 @@ export async function cascadeFieldChangesToSiblings(args: {
     batchId,
     schema,
     sourceAssignments,
-    oldData,
     newData,
     actingUserId,
     lastCascadeAt,
@@ -223,11 +230,6 @@ export async function cascadeFieldChangesToSiblings(args: {
     bySection.set(sec.id, { gatingSigId: sigId, fieldIds });
   }
   if (bySection.size === 0) return result;
-  // We still track oldData/newData for the unused-parameter lint
-  // when reconciliation alone matters; both are kept on the args
-  // type so callers don't have to be updated and so we can revert
-  // to diff mode in tests if needed.
-  void oldData;
 
   // Pull every sibling in the batch (excluding source).
   const { data: sibsRows, error: sibErr } = await sb

@@ -212,8 +212,16 @@ export async function POST(
           continue;
         }
         const v = (sRow.data ?? {})[f.id];
+        // document_expiry stores { date, photos[] } — "empty" means
+        // no date set. Without this branch a required expiry field
+        // counts as filled when it's still an empty object literal,
+        // and the section signs over no real data.
         const empty =
-          v == null || v === "" || (Array.isArray(v) && v.length === 0);
+          f.type === "document_expiry"
+            ? !(v as { date?: string } | null | undefined)?.date
+            : v == null ||
+              v === "" ||
+              (Array.isArray(v) && v.length === 0);
         if (empty) missing.push(f.label || f.id);
       }
       if (missing.length > 0) {

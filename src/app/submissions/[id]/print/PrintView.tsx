@@ -317,6 +317,33 @@ function FieldDisplay({
     );
   }
 
+  if (field.type === "document_expiry") {
+    const v =
+      (value as { date?: string; photos?: string[] } | null | undefined) ?? {};
+    const photos = (v.photos ?? []).map((p) => photoUrls[p]).filter(Boolean);
+    return (
+      <div>
+        {labelEl}
+        <div className="mt-1 text-sm">
+          Expires: <strong>{v.date || "—"}</strong>
+        </div>
+        {photos.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {photos.map((src, i) => (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                key={i}
+                src={src}
+                alt="Document photo"
+                className="max-h-32 rounded-md border border-ink/20"
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // text, textarea, number, date, datetime, dropdown, radio, timestamp
   let displayValue = "";
   if (value == null || value === "") {

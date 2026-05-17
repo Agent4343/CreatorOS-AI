@@ -147,6 +147,7 @@ export default async function SubmissionPage({
         form_name: s.forms?.name ?? "Form",
         updated_at: s.updated_at,
         last_edited_at: s.last_edited_at,
+        created_at: s.created_at,
       }}
       schema={schema}
       signedFields={signed}

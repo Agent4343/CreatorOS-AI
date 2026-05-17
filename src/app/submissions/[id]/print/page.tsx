@@ -126,20 +126,35 @@ async function renderPrint(
     signature_image: resolved[i] ?? r.signature_image,
   }));
 
+  // Collect every photo-storage path referenced by the submission's
+  // data so we can resolve them all to signed URLs at once. Two
+  // sources: plain "photo" fields (array of paths) and
+  // "document_expiry" fields (object with .photos array). Same
+  // bucket, same TTL, same downstream consumer.
   const photoUrls: Record<string, string> = {};
+  const photoPaths: string[] = [];
   for (const sec of schema.sections) {
     for (const f of sec.fields) {
-      if (f.type !== "photo") continue;
-      const paths = (s.data?.[f.id] as string[] | undefined) ?? [];
-      for (const path of paths) {
-        if (typeof path !== "string") continue;
-        if (!path.startsWith(`${s.org_id}/`)) continue;
-        const { data: url } = await sb.storage
-          .from("form-photos")
-          .createSignedUrl(path, 60 * 60 * 24);
-        if (url?.signedUrl) photoUrls[path] = url.signedUrl;
+      if (f.type === "photo") {
+        const paths = (s.data?.[f.id] as string[] | undefined) ?? [];
+        for (const p of paths) {
+          if (typeof p === "string") photoPaths.push(p);
+        }
+      } else if (f.type === "document_expiry") {
+        const v =
+          (s.data?.[f.id] as { photos?: string[] } | undefined) ?? {};
+        for (const p of v.photos ?? []) {
+          if (typeof p === "string") photoPaths.push(p);
+        }
       }
     }
+  }
+  for (const path of photoPaths) {
+    if (!path.startsWith(`${s.org_id}/`)) continue;
+    const { data: url } = await sb.storage
+      .from("form-photos")
+      .createSignedUrl(path, 60 * 60 * 24);
+    if (url?.signedUrl) photoUrls[path] = url.signedUrl;
   }
 
   return (
