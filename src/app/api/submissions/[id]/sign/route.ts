@@ -41,6 +41,12 @@ export async function POST(
        * Each sibling gets its own signature row with its own
        * data_hash bound to its own submission data. */
       batch_apply?: boolean;
+      /** Optimistic-lock token. A signature attests to the data the
+       * user *saw* at sign time — so if the row has been edited
+       * since the runner loaded it, we refuse the signature with a
+       * 409 instead of binding a hash to data the signer didn't
+       * actually consent to. */
+      expected_updated_at?: string;
     };
     if (!body.field_id || typeof body.signature_image !== "string") {
       return NextResponse.json(
@@ -60,7 +66,7 @@ export async function POST(
     const { data: submission, error: subErr } = await sb
       .from("submissions")
       .select(
-        "id, org_id, status, data, form_id, form_version_id, signature_assignments, batch_id",
+        "id, org_id, status, data, form_id, form_version_id, signature_assignments, batch_id, updated_at",
       )
       .eq("id", id)
       .maybeSingle();
@@ -77,6 +83,7 @@ export async function POST(
       form_version_id: string;
       signature_assignments: SignatureAssignments | null;
       batch_id: string | null;
+      updated_at: string;
     };
 
     await requireMembership(sRow.org_id);
@@ -84,6 +91,27 @@ export async function POST(
     if (sRow.status === "completed" || sRow.status === "rejected") {
       return NextResponse.json(
         { error: `Cannot sign a ${sRow.status} submission` },
+        { status: 409 },
+      );
+    }
+
+    // Optimistic-lock on the data being signed. A signature is a
+    // legal attestation to the data state at the moment of signing;
+    // if someone else changed the row since this client loaded it,
+    // signing now would bind a data_hash to data the signer didn't
+    // see and didn't consent to. Refuse, return the new state, let
+    // the runner re-render and re-prompt.
+    if (
+      body.expected_updated_at &&
+      body.expected_updated_at !== sRow.updated_at
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Form was edited after you loaded it. Reload and re-check the data before signing.",
+          conflict: true,
+          current_updated_at: sRow.updated_at,
+        },
         { status: 409 },
       );
     }

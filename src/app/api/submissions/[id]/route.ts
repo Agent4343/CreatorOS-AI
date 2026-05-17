@@ -65,7 +65,14 @@ export async function PATCH(
   try {
     const user = await requireUser();
     const { id } = await params;
-    const body = (await req.json()) as { data?: Record<string, unknown> };
+    const body = (await req.json()) as {
+      data?: Record<string, unknown>;
+      /** Optimistic-lock token. The client sends the `updated_at` it
+       * last observed; the server refuses the PATCH if the row has
+       * moved since. Omit to bypass (force-save) — useful for the
+       * "use my version" branch after a conflict prompt. */
+      expected_updated_at?: string;
+    };
     if (!body.data || typeof body.data !== "object") {
       return NextResponse.json({ error: "data required" }, { status: 400 });
     }
@@ -74,7 +81,7 @@ export async function PATCH(
     const { data: existing, error: getErr } = await sb
       .from("submissions")
       .select(
-        "id, org_id, status, data, started_by, last_edited_by, signature_assignments, batch_id, last_cascade_at, form_versions(schema)",
+        "id, org_id, status, data, started_by, last_edited_by, last_edited_at, updated_at, signature_assignments, batch_id, last_cascade_at, form_versions(schema)",
       )
       .eq("id", id)
       .maybeSingle();
@@ -89,6 +96,8 @@ export async function PATCH(
       data: Record<string, unknown>;
       started_by: string;
       last_edited_by: string | null;
+      last_edited_at: string | null;
+      updated_at: string;
       signature_assignments: SignatureAssignments | null;
       batch_id: string | null;
       last_cascade_at: string | null;
@@ -100,6 +109,33 @@ export async function PATCH(
     if (e.status === "completed" || e.status === "rejected") {
       return NextResponse.json(
         { error: `Cannot edit a ${e.status} submission` },
+        { status: 409 },
+      );
+    }
+
+    // Optimistic-lock check. Two admins editing the same submission
+    // (different tabs, different devices, batch sibling reconciler)
+    // can race and silently overwrite each other. We refuse PATCH
+    // when the client's last-seen updated_at doesn't match what the
+    // server has now, and return the current state so the runner
+    // can show a "this row was edited elsewhere" conflict prompt.
+    //
+    // Bypassable by omitting expected_updated_at — the "use my
+    // version" branch of the conflict prompt sends without it.
+    if (
+      body.expected_updated_at &&
+      body.expected_updated_at !== e.updated_at
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "This submission was edited elsewhere since you loaded it.",
+          conflict: true,
+          current_updated_at: e.updated_at,
+          current_data: e.data,
+          last_edited_by: e.last_edited_by,
+          last_edited_at: e.last_edited_at,
+        },
         { status: 409 },
       );
     }
@@ -281,7 +317,7 @@ export async function PATCH(
       }
     }
 
-    return NextResponse.json({ ok: true, cascade });
+    return NextResponse.json({ ok: true, cascade, updated_at: now });
   } catch (err) {
     if (err instanceof AuthError) return err;
     return NextResponse.json(

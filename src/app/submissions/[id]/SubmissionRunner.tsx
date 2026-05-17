@@ -23,6 +23,11 @@ type SubmissionShape = {
   status: SubmissionStatus;
   data: Record<string, unknown>;
   form_name: string;
+  /** Last-known server updated_at — used as the optimistic-lock
+   * token on every PATCH and sign. Updated locally on each
+   * successful save. */
+  updated_at: string;
+  last_edited_at?: string | null;
 };
 
 type SignedField = {
@@ -107,6 +112,19 @@ export default function SubmissionRunner({
   const [signed, setSigned] = useState<SignedField[]>(signedFields);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  /** Last-known server updated_at — the optimistic-lock token we
+   * send with every PATCH and sign. Updates on each successful save
+   * so subsequent saves keep matching. */
+  const [serverUpdatedAt, setServerUpdatedAt] = useState<string>(
+    submission.updated_at,
+  );
+  /** Set when the server returns a 409. Holds the freshly-loaded
+   * server state so the user can compare and pick a side. */
+  const [conflict, setConflict] = useState<{
+    current_updated_at: string;
+    current_data: Record<string, unknown>;
+    last_edited_at: string | null;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cascadeNotice, setCascadeNotice] = useState<string | null>(null);
   const [currentSection, setCurrentSection] = useState(0);
@@ -288,10 +306,34 @@ export default function SubmissionRunner({
       const res = await fetch(`/api/submissions/${submission.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ data: dataRef.current }),
+        body: JSON.stringify({
+          data: dataRef.current,
+          expected_updated_at: serverUpdatedAt,
+        }),
       });
       const body = await res.json().catch(() => ({}));
+      if (res.status === 409 && (body as { conflict?: boolean }).conflict) {
+        // Concurrent edit. Surface the server's current state so the
+        // user can decide whether to keep their local edits or
+        // adopt the server version. Either branch resolves the
+        // conflict by updating serverUpdatedAt and resuming saves.
+        setConflict({
+          current_updated_at: (body as { current_updated_at: string })
+            .current_updated_at,
+          current_data: (body as { current_data: Record<string, unknown> })
+            .current_data,
+          last_edited_at:
+            (body as { last_edited_at?: string | null }).last_edited_at ??
+            null,
+        });
+        setSaveState("error");
+        return false;
+      }
       if (!res.ok) throw new Error(body.error ?? `Save failed (${res.status})`);
+      // Server returns the new updated_at — keep our token in sync
+      // so the next save's optimistic check passes.
+      const newUpdatedAt = (body as { updated_at?: string }).updated_at;
+      if (newUpdatedAt) setServerUpdatedAt(newUpdatedAt);
       setSavedAt(new Date().toLocaleTimeString());
       dirtyRef.current = false;
       setSaveState("saved");
@@ -379,9 +421,20 @@ export default function SubmissionRunner({
           signature_image: signatureImage,
           geolocation: geo,
           batch_apply: batchApply,
+          expected_updated_at: serverUpdatedAt,
         }),
       });
       const body = await res.json().catch(() => ({}));
+      if (res.status === 409 && (body as { conflict?: boolean }).conflict) {
+        // The data changed between the user looking at the form and
+        // hitting sign. Refuse — a signature attests to data the
+        // signer saw, and we won't bind a hash to data they didn't.
+        // Tell them to reload and reconsider.
+        setError(
+          "The form was edited after you loaded it. Reload, re-check, and sign again.",
+        );
+        return;
+      }
       if (!res.ok) throw new Error(body.error ?? "Sign failed");
       setSigned((s) => [
         ...s,
@@ -628,6 +681,54 @@ export default function SubmissionRunner({
           <div className="mt-1 text-xs">
             Your changes were not saved. Try the Save button or check your
             connection before continuing.
+          </div>
+        </div>
+      )}
+
+      {conflict && (
+        <div className="mt-3 rounded-md border border-warn/50 bg-warn/10 p-3 text-sm">
+          <div className="font-bold text-warn">
+            This form was edited elsewhere
+          </div>
+          <p className="mt-1 text-xs text-ink/80">
+            Someone else saved a newer version
+            {conflict.last_edited_at
+              ? ` at ${new Date(conflict.last_edited_at).toLocaleTimeString()}`
+              : ""}
+            . Your unsaved changes are still here — pick one:
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={async () => {
+                // "Use my version" — adopt the server's updated_at
+                // so the next save bypasses the optimistic check,
+                // then immediately save. Server-side cascade will
+                // reconcile siblings as usual.
+                setServerUpdatedAt(conflict.current_updated_at);
+                setConflict(null);
+                dirtyRef.current = true;
+                await save();
+              }}
+              className="rounded-md bg-warn px-3 py-1.5 text-sm font-medium text-bg"
+            >
+              Use my version (overwrites theirs)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                // Adopt the server version wholesale.
+                setData(conflict.current_data);
+                dataRef.current = conflict.current_data;
+                dirtyRef.current = false;
+                setServerUpdatedAt(conflict.current_updated_at);
+                setConflict(null);
+                setSaveState("saved");
+              }}
+              className="rounded-md border border-ink/20 bg-white px-3 py-1.5 text-sm"
+            >
+              Use their version (discards mine)
+            </button>
           </div>
         </div>
       )}

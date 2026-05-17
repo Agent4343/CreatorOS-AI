@@ -4,6 +4,7 @@ import { listUserOrgs } from "@/lib/orgs";
 import { supabaseService } from "@/lib/supabase/server";
 import type { AuditLog, Membership } from "@/lib/types";
 import BillingSection from "./BillingSection";
+import DeliveryIssuesSection from "./DeliveryIssuesSection";
 import InviteSection from "./InviteSection";
 import NotificationsSection from "./NotificationsSection";
 import RolesSection, { type Role } from "./RolesSection";
@@ -123,6 +124,8 @@ export default async function SettingsPage() {
           initialEnabled={billing?.notify_on_completion ?? true}
         />
       )}
+
+      {isAdmin && <DeliveryIssuesSection orgId={org.id} />}
 
       {isAdmin && <RolesSection orgId={org.id} initialRoles={roles} />}
 
