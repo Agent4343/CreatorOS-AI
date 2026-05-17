@@ -350,15 +350,29 @@ export async function POST(
     // we orphan a blob, which we clean up below; the inverse order
     // (insert then upload then update) leaves an orphaned row with
     // no image, which is harder to detect.
+    //
+    // Storage path is best-effort: if the bucket isn't provisioned
+    // yet (fresh deploy, ops hasn't applied 0010 / created bucket),
+    // we fall back to writing the base64 inline in signature_image.
+    // Tamper-evidence is preserved either way — data_hash binds the
+    // signer + timestamp + data, not the storage location.
     const signatureId = crypto.randomUUID();
-    const imagePath = await uploadSignaturePng({
-      orgId: sRow.org_id,
-      submissionId: sRow.id,
-      signatureId,
-      dataUrl: body.signature_image,
-    });
+    let imagePath: string | null = null;
+    try {
+      imagePath = await uploadSignaturePng({
+        orgId: sRow.org_id,
+        submissionId: sRow.id,
+        signatureId,
+        dataUrl: body.signature_image,
+      });
+    } catch (uploadErr) {
+      console.warn(
+        "[sign] signature storage upload failed, falling back to inline base64:",
+        uploadErr instanceof Error ? uploadErr.message : String(uploadErr),
+      );
+    }
 
-    const { error: insErr } = await sb.from("submission_signatures").insert({
+    const sigInsert: Record<string, unknown> = {
       id: signatureId,
       submission_id: sRow.id,
       org_id: sRow.org_id,
@@ -366,22 +380,44 @@ export async function POST(
       signer_user_id: user.id,
       signer_name: user.user_metadata?.full_name ?? user.email ?? "Unknown",
       signer_email: user.email ?? "",
-      signature_image_path: imagePath,
       signed_at: signedAt,
       ip_address: fp.ip_address,
       user_agent: fp.user_agent,
       geolocation: body.geolocation ?? null,
       data_hash: dataHash,
-    });
+    };
+    if (imagePath) sigInsert.signature_image_path = imagePath;
+    else sigInsert.signature_image = body.signature_image;
+
+    const { error: insErr } = await sb
+      .from("submission_signatures")
+      .insert(sigInsert);
     if (insErr) {
-      // Best-effort cleanup. If the storage delete also fails the
-      // worst outcome is a stranded PNG no row points at; a periodic
-      // janitor can prune those.
-      await sb.storage
-        .from("signatures")
-        .remove([imagePath])
-        .catch(() => undefined);
-      throw insErr;
+      // Best-effort cleanup of the uploaded blob if the insert
+      // failed AFTER we managed to upload it. If we fell back to
+      // inline base64 there's nothing to clean up.
+      if (imagePath) {
+        await sb.storage
+          .from("signatures")
+          .remove([imagePath])
+          .catch(() => undefined);
+      }
+      // If the failure is the new column not existing (pre-0010
+      // schema), retry the insert with only the legacy column.
+      const isUnknownColumn =
+        /signature_image_path/i.test(insErr.message ?? "") &&
+        /column/i.test(insErr.message ?? "");
+      if (isUnknownColumn) {
+        const fallback: Record<string, unknown> = { ...sigInsert };
+        delete fallback.signature_image_path;
+        fallback.signature_image = body.signature_image;
+        const retry = await sb
+          .from("submission_signatures")
+          .insert(fallback);
+        if (retry.error) throw retry.error;
+      } else {
+        throw insErr;
+      }
     }
 
     // Did this signature complete every required signature on the form?
@@ -545,12 +581,11 @@ export async function POST(
           signedAt,
         });
 
-        // Upload a per-sibling copy of the PNG. We could share one
-        // blob across siblings but the storage cost is trivial and
-        // a per-sibling object lets us delete one sibling's data
-        // without touching another's.
+        // Upload a per-sibling copy of the PNG. Best-effort —
+        // same fallback as the primary insert above: if storage
+        // isn't provisioned we write the base64 inline.
         const sibSignatureId = crypto.randomUUID();
-        let sibImagePath: string;
+        let sibImagePath: string | null = null;
         try {
           sibImagePath = await uploadSignaturePng({
             orgId: sib.org_id,
@@ -559,36 +594,53 @@ export async function POST(
             dataUrl: body.signature_image,
           });
         } catch (uploadErr) {
-          batchResults.siblings_skipped.push({
-            id: sib.id,
-            reason: `upload failed: ${uploadErr instanceof Error ? uploadErr.message : String(uploadErr)}`,
-          });
-          continue;
+          console.warn(
+            "[sign-batch] sibling signature upload failed, falling back to inline base64:",
+            uploadErr instanceof Error ? uploadErr.message : String(uploadErr),
+          );
         }
 
-        const { error: sibInsErr } = await sb
-          .from("submission_signatures")
-          .insert({
-            id: sibSignatureId,
-            submission_id: sib.id,
-            org_id: sib.org_id,
-            field_id: body.field_id,
-            signer_user_id: user.id,
-            signer_name:
-              user.user_metadata?.full_name ?? user.email ?? "Unknown",
-            signer_email: user.email ?? "",
-            signature_image_path: sibImagePath,
-            signed_at: signedAt,
-            ip_address: fp.ip_address,
-            user_agent: fp.user_agent,
-            geolocation: body.geolocation ?? null,
-            data_hash: sibHash,
-          });
+        const sibInsert: Record<string, unknown> = {
+          id: sibSignatureId,
+          submission_id: sib.id,
+          org_id: sib.org_id,
+          field_id: body.field_id,
+          signer_user_id: user.id,
+          signer_name:
+            user.user_metadata?.full_name ?? user.email ?? "Unknown",
+          signer_email: user.email ?? "",
+          signed_at: signedAt,
+          ip_address: fp.ip_address,
+          user_agent: fp.user_agent,
+          geolocation: body.geolocation ?? null,
+          data_hash: sibHash,
+        };
+        if (sibImagePath) sibInsert.signature_image_path = sibImagePath;
+        else sibInsert.signature_image = body.signature_image;
+
+        let sibInsErr = (
+          await sb.from("submission_signatures").insert(sibInsert)
+        ).error;
+        if (
+          sibInsErr &&
+          /signature_image_path/i.test(sibInsErr.message ?? "") &&
+          /column/i.test(sibInsErr.message ?? "")
+        ) {
+          // Pre-0010 schema retry: drop the new column.
+          const fallback: Record<string, unknown> = { ...sibInsert };
+          delete fallback.signature_image_path;
+          fallback.signature_image = body.signature_image;
+          sibInsErr = (
+            await sb.from("submission_signatures").insert(fallback)
+          ).error;
+        }
         if (sibInsErr) {
-          await sb.storage
-            .from("signatures")
-            .remove([sibImagePath])
-            .catch(() => undefined);
+          if (sibImagePath) {
+            await sb.storage
+              .from("signatures")
+              .remove([sibImagePath])
+              .catch(() => undefined);
+          }
           batchResults.siblings_skipped.push({
             id: sib.id,
             reason: `insert failed: ${sibInsErr.message}`,

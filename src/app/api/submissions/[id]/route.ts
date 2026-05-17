@@ -78,11 +78,15 @@ export async function PATCH(
     }
 
     const sb = supabaseService();
+    // SELECT is wildcarded so a Supabase project still on the
+    // pre-0009 schema (no last_cascade_at column) doesn't 500 the
+    // whole save flow. We read the column off the row if it's
+    // there; if it isn't, the cascade throttle treats this row as
+    // never-cascaded which is the safe default (one extra cascade,
+    // not a missed save).
     const { data: existing, error: getErr } = await sb
       .from("submissions")
-      .select(
-        "id, org_id, status, data, started_by, last_edited_by, last_edited_at, updated_at, signature_assignments, batch_id, last_cascade_at, form_versions(schema)",
-      )
+      .select("*, form_versions(schema)")
       .eq("id", id)
       .maybeSingle();
     if (getErr) throw getErr;
