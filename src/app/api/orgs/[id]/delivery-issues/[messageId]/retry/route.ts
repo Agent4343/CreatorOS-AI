@@ -17,11 +17,14 @@ export const runtime = "nodejs";
  */
 export async function POST(
   _req: NextRequest,
-  { params }: { params: Promise<{ orgId: string; id: string }> },
+  { params }: { params: Promise<{ id: string; messageId: string }> },
 ) {
   try {
     const user = await requireUser();
-    const { orgId, id } = await params;
+    // Outer [id] is the org's id (to match the existing /api/orgs/[id]
+    // sibling routes); inner [messageId] is the outbound_messages row.
+    // Renamed from a clashing [id] so Next can resolve both segments.
+    const { id: orgId, messageId } = await params;
     const m = await requireMembership(orgId);
     if (m.role !== "owner" && m.role !== "admin") {
       return NextResponse.json({ error: "admin-only" }, { status: 403 });
@@ -30,7 +33,7 @@ export async function POST(
     const { data: row, error: getErr } = await sb
       .from("outbound_messages")
       .select("id, org_id, status, max_attempts")
-      .eq("id", id)
+      .eq("id", messageId)
       .maybeSingle();
     if (getErr) throw getErr;
     const r = row as {

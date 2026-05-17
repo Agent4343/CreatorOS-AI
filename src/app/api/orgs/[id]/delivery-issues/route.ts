@@ -14,11 +14,14 @@ export const runtime = "nodejs";
  */
 export async function GET(
   _req: NextRequest,
-  { params }: { params: Promise<{ orgId: string }> },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   try {
     await requireUser();
-    const { orgId } = await params;
+    // The dynamic segment is named [id] to stay consistent with the
+    // existing /api/orgs/[id]/notifications + /roles routes; locally
+    // it's the org id, so we rebind for readability.
+    const { id: orgId } = await params;
     const m = await requireMembership(orgId);
     if (m.role !== "owner" && m.role !== "admin") {
       return NextResponse.json(
